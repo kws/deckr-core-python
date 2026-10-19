@@ -52,8 +52,8 @@ all = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/kws/deckr#readme"
-Homepage = "https://github.com/kws/deckr"
+Documentation = "https://github.com/kws/deckr-core-python#readme"
+Homepage = "https://github.com/kws/deckr-core-python"
 
 [dependency-groups]
 dev = [
