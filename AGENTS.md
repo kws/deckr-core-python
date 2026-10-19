@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file adds agent-specific guidance for the `deckr` repository.
+This file adds agent-specific guidance for the `deckr-core-python` repository.
 
 Use [README.md](./README.md) as the primary source of truth for setup, package
 purpose, and the human-facing release workflow. Keep shared guidance in the
@@ -8,20 +8,29 @@ README and use this file for placement rules and implementation hints.
 
 ## What Lives Here
 
-`deckr` is the controller-independent Python core for the Deckr ecosystem.
+`deckr` is the controller-independent Python implementation for the Deckr ecosystem.
+The [Deckr reference repository](https://github.com/kws/deckr) owns the
+authoritative specifications, schemas, fixtures, conformance vectors, and
+protocol documentation. Keep those reference
+materials there; do not regenerate them from Python models or bundle them here.
+Contract alignment and Python behavior changes are separate from repository
+separation.
 
 Use this repo for:
 
-- shared hardware contracts and wire models
-- action-provider-facing manifests, messages, and lifecycle primitives
-- reusable runtime utilities that are not controller-specific
+- Python implementations of shared hardware contracts and wire models
+- Python action-provider-facing manifests, messages, and lifecycle primitives
+- reusable Python runtime utilities that are not controller-specific
 
 Do not place controller orchestration, rendering policy, filesystem config, or
-device-manager-specific behavior here. That belongs in the sibling
-`deckr-controller` repo.
+device-manager-specific behavior here. That belongs in the
+[`deckr-controller`](https://github.com/kws/deckr-controller) repository.
 
 ## Directory Guide
 
+- `src/deckr/contracts`
+  - Python wire models, message validation, and endpoint/key helpers.
+  - Implements the reference contracts; does not own their specification.
 - `src/deckr/core`
   - Generic runtime utilities and messaging primitives.
   - Must not depend on `deckr.hardware` or `deckr.actions`.
@@ -32,7 +41,9 @@ device-manager-specific behavior here. That belongs in the sibling
   - Shared hardware-facing contracts.
   - Must not depend on `deckr.actions`.
 - `tests`
-  - Tests for the core package only.
+  - Tests for this Python package only; do not scan other repositories.
+- `scripts`
+  - Python implementation diagnostics and validation tooling.
 
 ## Placement Rules
 
