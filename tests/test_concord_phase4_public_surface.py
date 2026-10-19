@@ -106,7 +106,9 @@ def test_beacon_advertisement_context_hides_manual_lifecycle_and_raw_handle() ->
         assert not hasattr(BeaconAdvertisementLease, name)
 
 
-def test_managed_service_capability_owns_operations_without_raw_lease_plumbing() -> None:
+def test_managed_service_capability_owns_operations_without_raw_lease_plumbing() -> (
+    None
+):
     for name in ("contract", "agreement", "refresh"):
         assert not hasattr(ManagedService, name)
     for name in (

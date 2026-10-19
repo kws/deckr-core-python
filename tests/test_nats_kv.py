@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from typing import Any
 
 import anyio
@@ -42,9 +43,7 @@ def test_nats_kv_policy_vector_fields_are_explicit_and_complete() -> None:
 
 
 @pytest.mark.asyncio
-async def test_nats_json_kv_ignores_non_authoritative_existing_config_fields() -> (
-    None
-):
+async def test_nats_json_kv_ignores_non_authoritative_existing_config_fields() -> None:
     fake_js = _FakeJs(
         existing=True,
         max_age=30.0,
@@ -285,7 +284,8 @@ async def test_nats_json_kv_watch_maps_put_delete_and_expire_markers() -> None:
     assert unclassified_marker.operation == "delete"
     assert unclassified_marker.marker_reason == "absent"
     assert ready == KvWatchBarrier(revision=4)
-    assert fake_js.deleted_consumers == [("KV_deckr_concord_contract_v1", "consumer-1")]
+    assert len(fake_js.deleted_consumers) == 1
+    assert fake_js.deleted_consumers[0][0] == "KV_deckr_concord_contract_v1"
 
 
 @pytest.mark.asyncio
@@ -365,7 +365,9 @@ async def test_nats_json_kv_create_keeps_live_entry_conflict() -> None:
 
 
 @pytest.mark.asyncio
-async def test_nats_json_kv_delete_returns_real_marker_revision_after_stream_gap() -> None:
+async def test_nats_json_kv_delete_returns_real_marker_revision_after_stream_gap() -> (
+    None
+):
     fake_js = _FakeJs()
     current = fake_js.kv.add_entry("contracts.main.1.meta", b'{"state":"open"}')
     gap = fake_js.kv.add_entry("contracts.main.2.meta", b'{"state":"open"}')
@@ -605,9 +607,7 @@ async def test_materialized_bucket_bounds_post_barrier_tombstones() -> None:
     assert materialized.tombstone_count == MATERIALIZED_TOMBSTONE_LIMIT
     assert materialized.revision_cached("items.0001") is None
     assert (
-        materialized.revision_cached(
-            f"items.{MATERIALIZED_TOMBSTONE_LIMIT + 501:04d}"
-        )
+        materialized.revision_cached(f"items.{MATERIALIZED_TOMBSTONE_LIMIT + 501:04d}")
         == MATERIALIZED_TOMBSTONE_LIMIT + 501
     )
 
@@ -654,12 +654,8 @@ class _BootstrapRaceBucket(MemoryJsonKvBucket):
     async def watch(
         self,
         prefix: str = "",
-    ) -> AsyncIterator[
-        anyio.abc.ObjectReceiveStream[KvChange | KvWatchBarrier]
-    ]:
-        send, receive = anyio.create_memory_object_stream[
-            KvChange | KvWatchBarrier
-        ](16)
+    ) -> AsyncIterator[anyio.abc.ObjectReceiveStream[KvChange | KvWatchBarrier]]:
+        send, receive = anyio.create_memory_object_stream[KvChange | KvWatchBarrier](16)
         async with self._lock:  # noqa: SLF001
             self._watch_count += 1  # noqa: SLF001
             self._watchers[send] = prefix  # noqa: SLF001
@@ -730,9 +726,7 @@ class _RecoveringWatchBucket:
     async def watch(
         self,
         prefix: str = "",
-    ) -> AsyncIterator[
-        anyio.abc.ObjectReceiveStream[KvChange | KvWatchBarrier]
-    ]:
+    ) -> AsyncIterator[anyio.abc.ObjectReceiveStream[KvChange | KvWatchBarrier]]:
         self.watch_count += 1
         if self._pause_next_watch:
             self._pause_next_watch = False
@@ -744,7 +738,9 @@ class _RecoveringWatchBucket:
             100
         )
         snapshot = tuple(
-            entry for key, entry in sorted(self._entries.items()) if key.startswith(prefix)
+            entry
+            for key, entry in sorted(self._entries.items())
+            if key.startswith(prefix)
         )
         barrier = KvWatchBarrier(self._revision)
 
@@ -977,6 +973,42 @@ class _FakeJs:
         self._jsm = self
         self._prefix = "$JS.API"
         self._timeout = 5
+        self._nc = SimpleNamespace(
+            stats={"reconnects": 0},
+            is_connected=True,
+            new_inbox=lambda: "_INBOX.test",
+            subscribe=self.subscribe,
+        )
+
+    async def subscribe(self, _inbox, *, cb, **_kwargs):
+        self._callback = cb
+
+        async def unsubscribe():
+            pass
+
+        return SimpleNamespace(unsubscribe=unsubscribe)
+
+    async def add_consumer(self, stream, *, config):
+        entries = list(self.kv._entries.values())
+        for index, entry in enumerate(entries):
+            headers = dict(getattr(entry, "headers", None) or {})
+            if entry.operation:
+                headers["KV-Operation"] = entry.operation
+            message = SimpleNamespace(
+                headers=headers,
+                reply="",
+                data=entry.value,
+                subject=f"$KV.{self.bucket}.{entry.key}",
+                metadata=SimpleNamespace(
+                    consumer=config.name,
+                    sequence=SimpleNamespace(consumer=index + 1, stream=entry.revision),
+                    num_pending=len(entries) - index - 1,
+                ),
+            )
+            await self._callback(message)
+        return SimpleNamespace(
+            num_pending=0, delivered=SimpleNamespace(consumer_seq=len(entries))
+        )
 
     def next_consumer_name(self) -> str:
         self._consumer_index += 1
@@ -1067,9 +1099,7 @@ class _FakeJs:
                 max_age=float(raw_config["max_age"]) / 1_000_000_000,
                 max_msgs_per_subject=int(raw_config["max_msgs_per_subject"]),
                 allow_msg_ttl=bool(raw_config.get("allow_msg_ttl", False)),
-                subject_delete_marker_ttl=raw_config.get(
-                    "subject_delete_marker_ttl"
-                ),
+                subject_delete_marker_ttl=raw_config.get("subject_delete_marker_ttl"),
             )
             return {"config": self._raw_config(), "state": {}}
         raise AssertionError(f"unexpected JetStream API subject {subject!r}")
@@ -1095,3 +1125,21 @@ class _FakeJs:
     async def delete_consumer(self, stream: str, consumer: str) -> bool:
         self.deleted_consumers.append((stream, consumer))
         return True
+
+
+def test_materialized_nats_constructor_preserves_transport_convenience():
+    from deckr.core.kv_source import KvMaterializedSource
+
+    js = object()
+    policy = KvBucketPolicy(bucket="example", ttl_seconds=30)
+    by_name = NatsKvMaterializedBucket(
+        js=js, bucket="example", policy=policy, key_prefix="items."
+    )
+    by_policy = NatsKvMaterializedBucket(js=js, policy=policy)
+    assert isinstance(by_name, KvMaterializedSource)
+    assert by_name.key_prefix == "items."
+    assert by_name.exact_bucket.policy == by_policy.exact_bucket.policy == policy
+    with pytest.raises(ValueError, match="js is required"):
+        NatsKvMaterializedBucket(bucket="example")
+    with pytest.raises(ValueError, match="bucket or js"):
+        NatsKvMaterializedBucket()

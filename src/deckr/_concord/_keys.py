@@ -5,9 +5,9 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from deckr.contracts.keys import decode_key_token, encode_key_token
-from deckr.contracts.messages import EndpointAddress, parse_endpoint_address
-from deckr.contracts.models import DeckrModel, freeze_json, thaw_json
+from deckr.core.identity import EndpointAddress, parse_endpoint_address
+from deckr.core.keys import decode_key_token, encode_key_token
+from deckr.core.wire import WireModel, freeze_json, thaw_json
 
 
 def concord_contract_key(*, contract_id: str, generation: int) -> str:
@@ -109,8 +109,8 @@ def parse_concord_token_cleanup_key(key: str) -> tuple[str, int] | None:
     return contract_id, generation
 
 
-def canonical_json_bytes(value: Mapping[str, Any] | DeckrModel) -> bytes:
-    if isinstance(value, DeckrModel):
+def canonical_json_bytes(value: Mapping[str, Any] | WireModel) -> bytes:
+    if isinstance(value, WireModel):
         payload = value.model_dump(by_alias=True, exclude_none=True, mode="json")
     else:
         payload = thaw_json(freeze_json(value))
@@ -122,5 +122,5 @@ def canonical_json_bytes(value: Mapping[str, Any] | DeckrModel) -> bytes:
     ).encode("utf-8")
 
 
-def canonical_json_hash(value: Mapping[str, Any] | DeckrModel) -> str:
+def canonical_json_hash(value: Mapping[str, Any] | WireModel) -> str:
     return "sha256:" + hashlib.sha256(canonical_json_bytes(value)).hexdigest()

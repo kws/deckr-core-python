@@ -57,7 +57,9 @@ class ProfileCapacity(DeckrModel):
             and self.available_instances
             != max(self.total_instances - self.claimed_instances, 0)
         ):
-            raise ValueError("availableInstances must match totalInstances - claimedInstances")
+            raise ValueError(
+                "availableInstances must match totalInstances - claimedInstances"
+            )
         return self
 
 
@@ -68,7 +70,9 @@ class HardwareAdvertisementDevice(DeckrModel):
 
     @field_serializer("descriptor")
     def _serialize_descriptor(self, value: DeviceDescriptor) -> dict[str, Any]:
-        return thaw_json(value.model_dump(by_alias=True, exclude_none=True, mode="json"))
+        return thaw_json(
+            value.model_dump(by_alias=True, exclude_none=True, mode="json")
+        )
 
 
 class HardwareBeaconPayload(DeckrModel):
@@ -89,7 +93,9 @@ class HardwareBeaconPayload(DeckrModel):
     def _freeze_labels(cls, value: Mapping[str, str]) -> Mapping[str, str]:
         return freeze_json(
             {
-                _require_text(key, field_name="hardware profile label key"): _require_text(
+                _require_text(
+                    key, field_name="hardware profile label key"
+                ): _require_text(
                     item,
                     field_name="hardware profile label value",
                 )
@@ -131,7 +137,9 @@ class HardwareBeaconPayload(DeckrModel):
             if item.descriptor.device_id != item.device_ref.device_id:
                 raise ValueError("descriptor.deviceId must match deviceRef.deviceId")
             if item.device_ref.fingerprint not in {None, item.descriptor.fingerprint}:
-                raise ValueError("deviceRef fingerprint must match descriptor fingerprint")
+                raise ValueError(
+                    "deviceRef fingerprint must match descriptor fingerprint"
+                )
         return self
 
     def to_dict(self) -> dict[str, Any]:
@@ -225,11 +233,15 @@ def hardware_payload_from_advertisement(
         raise ValueError("advertisement featureId is not dev.deckr.hardware")
     if advertisement.payload is None:
         raise ValueError("hardware advertisement requires payload")
-    payload = HardwareBeaconPayload.model_validate(advertisement.payload)
+    payload = HardwareBeaconPayload.from_wire(advertisement.payload)
     if payload.session_id != advertisement.session_id:
-        raise ValueError("hardware payload sessionId must match advertisement sessionId")
+        raise ValueError(
+            "hardware payload sessionId must match advertisement sessionId"
+        )
     if payload.manager_endpoint != advertisement.endpoint:
-        raise ValueError("hardware payload managerEndpoint must match advertisement endpoint")
+        raise ValueError(
+            "hardware payload managerEndpoint must match advertisement endpoint"
+        )
     return payload
 
 

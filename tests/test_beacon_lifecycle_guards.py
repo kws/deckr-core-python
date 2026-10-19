@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
@@ -11,7 +12,6 @@ import anyio
 import pytest
 from pydantic import ValidationError
 
-from deckr import beacon as beacon_module
 from deckr.beacon import (
     AdvertisementRecord,
     Beacon,
@@ -158,10 +158,13 @@ async def test_beacon_public_lifecycle_validation_and_updates() -> None:
         candidates = beacon.candidates(FEATURE)
         assert len(candidates) == 1
         candidate = candidates[0]
-        assert beacon.get(
-            feature_id=FEATURE,
-            advertisement_id=candidate.advertisement.advertisement_id,
-        ) == candidate
+        assert (
+            beacon.get(
+                feature_id=FEATURE,
+                advertisement_id=candidate.advertisement.advertisement_id,
+            )
+            == candidate
+        )
         assert await beacon.validate(candidate) == CandidateStatus.CANDIDATE
         assert (
             await beacon.validate(
@@ -339,9 +342,7 @@ async def test_beacon_refresh_conflict_missing_and_delete_ack_recovery() -> None
             error=KvConflict("revision raced"),
         )
         await lease.update(labels={"site": "retried"})
-        assert beacon.candidates(FEATURE)[0].advertisement.labels == {
-            "site": "retried"
-        }
+        assert beacon.candidates(FEATURE)[0].advertisement.labels == {"site": "retried"}
 
         # Discovery may recreate a missing advertisement, but only with the
         # already-prepared lease identity.
@@ -428,7 +429,7 @@ async def test_beacon_ttl_supports_sync_metadata_and_heartbeat_retry(
                 lease._closed = True  # noqa: SLF001
             await anyio.lowlevel.checkpoint()
 
-        monkeypatch.setattr(beacon_module.anyio, "sleep", controlled_sleep)
+        monkeypatch.setattr(anyio, "sleep", controlled_sleep)
         await lease._heartbeat_loop()  # noqa: SLF001
         assert bucket.operation_counts["update"] == 2
         assert sleeps == 3
@@ -450,10 +451,13 @@ async def test_beacon_watch_and_noop_refresh_cover_current_public_paths() -> Non
         )
         async with beacon.watch() as snapshots:
             assert (await anext(snapshots)).candidates == (candidate,)
-        assert await beacon.remove_stale_advertisements(
-            _Endpoint(hardware_manager_address("other"), "other-session"),
-            _spec(),
-        ) == 0
+        assert (
+            await beacon.remove_stale_advertisements(
+                _Endpoint(hardware_manager_address("other"), "other-session"),
+                _spec(),
+            )
+            == 0
+        )
         await beacon._observe_write(candidate.key, candidate.revision)  # noqa: SLF001
         beacon._started = True  # noqa: SLF001
 
@@ -586,7 +590,7 @@ async def test_beacon_refresh_conflict_recovery_exact_classification() -> None:
 async def test_beacon_exact_withdraw_and_stale_delete_failure_matrix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(beacon_module.random, "uniform", lambda _low, _high: 0)
+    monkeypatch.setattr(random, "uniform", lambda _low, _high: 0)
     endpoint = _Endpoint(MANAGER, "manager-session")
     bucket = LifecycleFaultHarness(bucket="beacon", ttl_seconds=30)
     async with _running_beacon(bucket) as (beacon, raw):

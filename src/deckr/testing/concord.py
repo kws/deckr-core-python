@@ -8,10 +8,7 @@ from deckr._authority_buckets import (
     DEFAULT_CONCORD_MAINTENANCE_BUCKET_NAME,
     DEFAULT_CONCORD_TOKEN_BUCKET_NAME,
 )
-from deckr._concord._keys import (
-    concord_contract_key,
-    concord_participant_token_key,
-)
+from deckr._concord._keys import concord_contract_key, concord_participant_token_key
 from deckr._concord._models import (
     ContractHandle,
     ContractRecord,
@@ -23,13 +20,8 @@ from deckr._concord._models import (
 from deckr.concord import Concord
 from deckr.concord_maintenance import ConcordMaintenance
 from deckr.contracts.authority import ContractPointer
-from deckr.substrates.nats_kv import (
-    KvChange,
-    KvEntry,
-    KvMaterializedSnapshot,
-    KvWatchBarrier,
-    NatsKvMaterializedBucket,
-)
+from deckr.core.kv import KvChange, KvEntry, KvMaterializedSnapshot, KvWatchBarrier
+from deckr.core.kv_source import KvMaterializedSource
 from deckr.testing.kv import MemoryJsonKvBucket
 
 
@@ -45,7 +37,7 @@ def _materialized(store: Any) -> Any:
         )
     ):
         return store
-    return NatsKvMaterializedBucket(bucket=store)
+    return KvMaterializedSource(bucket=store)
 
 
 class ConcordRuntimeHarness:
@@ -184,7 +176,9 @@ async def _materialize_store(view: Any, store: Any) -> KvMaterializedSnapshot:
         entry.key: KvChange(view.bucket, entry.key, entry.revision, "put", entry)
         for entry in entries
     }
-    revision = int(getattr(store, "revision", max((e.revision for e in entries), default=0)))
+    revision = int(
+        getattr(store, "revision", max((e.revision for e in entries), default=0))
+    )
     await view._install_recovered_snapshot(  # noqa: SLF001
         observed,
         {},

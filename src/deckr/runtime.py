@@ -16,12 +16,13 @@ if TYPE_CHECKING:
         ServiceProvider,
     )
 
-from deckr._authority_buckets import (
+from deckr.beacon import BEACON_ADVERTISEMENT_STORE_POLICY, Beacon
+from deckr.bindings.authority_stores import (
     RESERVED_AUTHORITY_BUCKET_POLICIES,
     ConcordMaintenanceStores,
     concord_maintenance_stores,
 )
-from deckr.beacon import BEACON_ADVERTISEMENT_STORE_POLICY, Beacon
+from deckr.bindings.nats import DeckrNatsSubstrate as NatsSubstrate
 from deckr.concord import (
     CONCORD_CONTRACT_BUCKET_POLICY,
     CONCORD_TOKEN_BUCKET_POLICY,
@@ -33,6 +34,7 @@ from deckr.contracts.lanes import (
     MessageContractRegistry,
 )
 from deckr.contracts.messages import CORE_LANE_NAMES, SERVICES_LANE, EndpointAddress
+from deckr.core.kv import JsonKvBucket, KvBucketPolicy
 from deckr.lanes import (
     EndpointSession,
     Lane,
@@ -40,8 +42,6 @@ from deckr.lanes import (
     MessageBus,
     endpoint_session,
 )
-from deckr.substrates.nats import NatsSubstrate
-from deckr.substrates.nats_kv import KvBucketPolicy, NatsJsonKvBucket
 
 
 class Deckr:
@@ -116,7 +116,7 @@ class Deckr:
             raise RuntimeError("Deckr runtime does not provide Concord")
         return self._concord
 
-    def kv_bucket(self, policy: KvBucketPolicy) -> NatsJsonKvBucket:
+    def kv_bucket(self, policy: KvBucketPolicy) -> JsonKvBucket:
         if policy.bucket in RESERVED_AUTHORITY_BUCKET_POLICIES:
             raise ValueError(
                 f"KV bucket {policy.bucket!r} is reserved for a typed Deckr "
@@ -124,7 +124,7 @@ class Deckr:
             )
         return self._raw_kv_bucket(policy)
 
-    def _raw_kv_bucket(self, policy: KvBucketPolicy) -> NatsJsonKvBucket:
+    def _raw_kv_bucket(self, policy: KvBucketPolicy) -> JsonKvBucket:
         kv_bucket = getattr(self._message_bus, "kv_bucket", None)
         if kv_bucket is None:
             raise RuntimeError("Deckr message bus does not provide NATS KV buckets")
@@ -132,7 +132,7 @@ class Deckr:
 
     def _concord_maintenance_stores(
         self,
-    ) -> ConcordMaintenanceStores[NatsJsonKvBucket]:
+    ) -> ConcordMaintenanceStores[JsonKvBucket]:
         return concord_maintenance_stores(self._raw_kv_bucket)
 
     @asynccontextmanager
@@ -217,7 +217,7 @@ class Deckr:
             command_handler=command_handler,
             reset_handler=reset_handler,
         )
-        return HardwareManagerContext(runtime)
+        return HardwareManagerContext(runtime, task_group=self._task_group)
 
     async def __aenter__(self) -> Deckr:
         if self._task_group is not None:
@@ -352,4 +352,8 @@ class Deckr:
                 f"Extension lane contract(s) require explicit lanes: {names}"
             )
 
-        return MessageContractRegistry(contracts.values())
+        from deckr.bindings.messages import with_deckr_body_codec
+
+        return MessageContractRegistry(
+            with_deckr_body_codec(contract) for contract in contracts.values()
+        )

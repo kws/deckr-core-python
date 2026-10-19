@@ -55,7 +55,9 @@ async def _receive(stream):
 async def test_endpoint_session_id_is_reused_across_lanes() -> None:
     async with (
         mock_deckr() as deckr,
-        deckr.endpoint(controller_address("main"), session_id="controller-fixed") as controller,
+        deckr.endpoint(
+            controller_address("main"), session_id="controller-fixed"
+        ) as controller,
         deckr.endpoint(hardware_manager_address("hardware")) as hardware,
         deckr.endpoint(service_address("media")) as service,
     ):
@@ -572,7 +574,7 @@ async def test_nats_reconnect_survives_long_outage_resets_and_stops_on_close(
     monkeypatch.setattr(nats, "connect", connect)
     monkeypatch.setattr(nc, "_connect_to_server", dial)
     monkeypatch.setattr(asyncio, "sleep", record_sleep)
-    monkeypatch.setattr("deckr.substrates.nats.random.uniform", lambda low, high: high)
+    monkeypatch.setattr("deckr.bindings.nats.random.uniform", lambda low, high: high)
     substrate = NatsSubstrate(
         lane_contracts=DEFAULT_MESSAGE_CONTRACT_REGISTRY,
         reconnect_max_interval_seconds=maximum,

@@ -7,7 +7,7 @@ from pathlib import Path
 import anyio
 import pytest
 
-import deckr.substrates.supervised_nats as supervised_nats_mod
+import deckr.substrates.nats_server as supervised_nats_mod
 from deckr.contracts.lanes import DEFAULT_MESSAGE_CONTRACT_REGISTRY
 from deckr.contracts.messages import service_address
 from deckr.core.config import ConfigDocument
@@ -85,10 +85,10 @@ def test_nats_binary_resolver_reports_no_candidates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "deckr.substrates.supervised_nats._bundled_nats_server_path",
+        "deckr.substrates.nats_binary._bundled_nats_server_path",
         lambda: None,
     )
-    monkeypatch.setattr("deckr.substrates.supervised_nats.shutil.which", lambda _: None)
+    monkeypatch.setattr("deckr.substrates.nats_binary.shutil.which", lambda _: None)
 
     with pytest.raises(NatsServerBinaryResolutionError, match="No configured"):
         NatsServerBinaryResolver().resolve()
@@ -118,7 +118,7 @@ def test_nats_binary_resolver_rejects_bad_or_old_versions(
     binary.chmod(0o700)
 
     monkeypatch.setattr(
-        "deckr.substrates.supervised_nats.subprocess.run",
+        "deckr.substrates.nats_binary.subprocess.run",
         lambda *args, **kwargs: type(
             "Result",
             (),
@@ -129,7 +129,7 @@ def test_nats_binary_resolver_rejects_bad_or_old_versions(
         _read_nats_server_version(binary)
 
     monkeypatch.setattr(
-        "deckr.substrates.supervised_nats.subprocess.run",
+        "deckr.substrates.nats_binary.subprocess.run",
         lambda *args, **kwargs: type(
             "Result",
             (),
@@ -378,7 +378,7 @@ async def test_supervised_substrate_starts_supervisor_before_nats(
             captured["nats_closed"] = True
 
     monkeypatch.setattr(
-        "deckr.substrates.supervised_nats.NatsSubstrate",
+        "deckr.substrates._supervised_substrate.NatsSubstrate",
         FakeNatsSubstrate,
     )
     substrate = SupervisedNatsSubstrate(
@@ -672,7 +672,7 @@ async def test_supervised_connect_failure_stops_supervisor_and_clears_nats(
             raise RuntimeError("connect failed")
 
     monkeypatch.setattr(
-        "deckr.substrates.supervised_nats.NatsSubstrate",
+        "deckr.substrates._supervised_substrate.NatsSubstrate",
         FailingNatsSubstrate,
     )
     substrate = SupervisedNatsSubstrate(

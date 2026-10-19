@@ -23,7 +23,6 @@ from deckr.components._host import (
     ComponentInstanceSpec,
     ComponentManifest,
     ComponentPlanningReport,
-    LaneRegistry,
     PlanningEvent,
     ResolvedLaneSet,
     available_component_ids,
@@ -75,3 +74,5 @@ __all__ = [
     "runtime_name_for",
     "start_components",
 ]
+
+from deckr.lanes import LaneRegistry as LaneRegistry

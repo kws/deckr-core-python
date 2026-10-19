@@ -58,9 +58,7 @@ def _concord(deckr) -> Concord:
     concord = getattr(deckr, "_test_concord", None)
     if concord is None:
         concord = ConcordRuntimeHarness(
-            contract_store=deckr._message_bus.kv_bucket(
-                CONCORD_CONTRACT_BUCKET_POLICY
-            ),
+            contract_store=deckr._message_bus.kv_bucket(CONCORD_CONTRACT_BUCKET_POLICY),
             token_store=deckr._message_bus.kv_bucket(CONCORD_TOKEN_BUCKET_POLICY),
         ).concord
         deckr._test_concord = concord
@@ -107,9 +105,9 @@ async def _wait_for_live_claim(
                     for claim in runtime.live_claims
                 )
                 and runtime._advertised_payload is not None
-                and runtime._advertised_payload["devices"]
-                [next(iter(runtime.live_claims[0].device_ids))]["capacity"]
-                ["claimedInstances"]
+                and runtime._advertised_payload["devices"][
+                    next(iter(runtime.live_claims[0].device_ids))
+                ]["capacity"]["claimedInstances"]
                 == 1
             ):
                 return
@@ -817,3 +815,66 @@ async def test_competing_claims_keep_existing_live_claim_before_lower_key() -> N
         await endpoint_cm.__aexit__(None, None, None)
         await controller_a_cm.__aexit__(None, None, None)
         await controller_b_cm.__aexit__(None, None, None)
+
+
+@pytest.mark.parametrize("loss", ["token", "continuity"])
+async def test_cached_hardware_claim_cannot_authorize_while_reconciliation_is_blocked(
+    loss,
+):
+    from unittest.mock import AsyncMock
+
+    from deckr.core.kv import KvViewStatus
+
+    handler = AsyncMock(return_value=True)
+    deckr, endpoint_cm, runtime = await _runtime(command_handler=handler)
+    controller_cm = deckr.endpoint(controller_address("controller-main"))
+    controller = await controller_cm.__aenter__()
+    concord = _concord(deckr)
+    try:
+        await _add_device(runtime, _descriptor())
+        contract = await _claim(runtime, concord)
+        await concord._attach(contract, controller.address, controller.session_id)
+        await _wait_for_live_claim(runtime, concord, contract)
+        source = concord._repository.token_source._bucket
+        validity = await concord._validate(contract)
+        token = validity.tokens[str(runtime.endpoint.address)]
+        async with runtime._lock, concord._view._broadcaster.lock:
+            if loss == "token":
+                await source.exact_bucket.delete(token.key, revision=token.revision)
+                with anyio.fail_after(1):
+                    while source.get_cached(token.key) is not None:
+                        await anyio.sleep(0)
+            else:
+                await source._set_status(KvViewStatus.STALE)
+                await source._set_status(KvViewStatus.READY)
+            assert runtime.live_claims  # Projection is deliberately still populated.
+            command = hw_messages.control_command_message(
+                controller_id="controller-main",
+                sender_session_id=controller.session_id,
+                manager_id="manager-main",
+                device_id="stream-deck-mini",
+                control_id="0,0",
+                capability_id="raster.bitmap",
+                command_type="clear",
+                contract=_contract_pointer(contract),
+            )
+            assert not await runtime._handle_command(command)
+            handler.assert_not_awaited()
+            deckr._message_bus.publish.reset_mock()
+            assert not await runtime.handle_hardware_message(
+                hw_messages.control_input_message(
+                    manager_id="manager-main",
+                    sender_session_id=runtime.endpoint.session_id,
+                    device_id="stream-deck-mini",
+                    fingerprint=_descriptor().fingerprint,
+                    control_id="0,0",
+                    capability_id="raster.bitmap",
+                    event_type="press",
+                    value={"eventType": "press"},
+                )
+            )
+            deckr._message_bus.publish.assert_not_awaited()
+    finally:
+        await runtime.stop()
+        await endpoint_cm.__aexit__(None, None, None)
+        await controller_cm.__aexit__(None, None, None)

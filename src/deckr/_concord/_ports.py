@@ -6,11 +6,8 @@ from typing import Any, Protocol
 
 import anyio
 
-from deckr.contracts.models import DeckrModel
-from deckr.substrates.nats_kv import (
-    KvEntry,
-    KvMaterializedSnapshot,
-)
+from deckr.core.kv import KvEntry, KvMaterializedSnapshot
+from deckr.core.wire import WireModel
 
 
 class ExactConcordKvPort(Protocol):
@@ -22,7 +19,7 @@ class ExactConcordKvPort(Protocol):
     async def create(
         self,
         key: str,
-        value: Mapping[str, Any] | DeckrModel,
+        value: Mapping[str, Any] | WireModel,
         *,
         ttl: float | None = None,
     ) -> KvEntry: ...
@@ -30,7 +27,7 @@ class ExactConcordKvPort(Protocol):
     async def update(
         self,
         key: str,
-        value: Mapping[str, Any] | DeckrModel,
+        value: Mapping[str, Any] | WireModel,
         *,
         revision: int,
         ttl: float | None = None,
@@ -44,6 +41,9 @@ class ExactConcordKvPort(Protocol):
 class ConcordMaterializedSourcePort(Protocol):
     @property
     def bucket(self) -> str: ...
+
+    @property
+    def generation(self) -> int: ...
 
     @property
     def version(self) -> int: ...
@@ -68,9 +68,7 @@ class ConcordMaterializedSourcePort(Protocol):
 
     def subscribe(
         self,
-    ) -> AbstractAsyncContextManager[
-        Any
-    ]: ...
+    ) -> AbstractAsyncContextManager[Any]: ...
 
     async def snapshot(self) -> KvMaterializedSnapshot: ...
 
@@ -86,7 +84,7 @@ class ConcordMaintenanceScanPort(Protocol):
     async def create(
         self,
         key: str,
-        value: Mapping[str, Any] | DeckrModel,
+        value: Mapping[str, Any] | WireModel,
         *,
         ttl: float | None = None,
     ) -> KvEntry: ...
@@ -94,7 +92,7 @@ class ConcordMaintenanceScanPort(Protocol):
     async def update(
         self,
         key: str,
-        value: Mapping[str, Any] | DeckrModel,
+        value: Mapping[str, Any] | WireModel,
         *,
         revision: int,
         ttl: float | None = None,
@@ -121,7 +119,7 @@ class ConcordRawMaintenanceStorePort(Protocol):
     async def create(
         self,
         key: str,
-        value: Mapping[str, Any] | DeckrModel,
+        value: Mapping[str, Any] | WireModel,
         *,
         ttl: float | None = None,
     ) -> KvEntry: ...
@@ -129,7 +127,7 @@ class ConcordRawMaintenanceStorePort(Protocol):
     async def update(
         self,
         key: str,
-        value: Mapping[str, Any] | DeckrModel,
+        value: Mapping[str, Any] | WireModel,
         *,
         revision: int,
         ttl: float | None = None,

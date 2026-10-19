@@ -77,10 +77,13 @@ def _document(raw: dict) -> ConfigDocument:
 @asynccontextmanager
 async def _running_components(document: ConfigDocument):
     plan = resolve_component_host_plan(document)
-    async with mock_deckr(
-        lane_contracts=plan.lane_contracts,
-        lanes=plan.lane_names,
-    ) as deckr, start_components(deckr, plan) as component_host:
+    async with (
+        mock_deckr(
+            lane_contracts=plan.lane_contracts,
+            lanes=plan.lane_names,
+        ) as deckr,
+        start_components(deckr, plan) as component_host,
+    ):
         yield component_host, deckr
 
 
@@ -372,10 +375,13 @@ async def test_start_components_passes_lane_registry_to_component() -> None:
         document,
         definitions={"com.example.action_runtime": definition},
     )
-    async with mock_deckr(
-        lane_contracts=plan.lane_contracts,
-        lanes=plan.lane_names,
-    ) as deckr, start_components(deckr, plan) as component_host:
+    async with (
+        mock_deckr(
+            lane_contracts=plan.lane_contracts,
+            lanes=plan.lane_names,
+        ) as deckr,
+        start_components(deckr, plan) as component_host,
+    ):
         await component_host.component_manager.wait_for_state(
             "com.example.action_runtime:main",
             ComponentState.RUNNING,
@@ -460,10 +466,13 @@ async def test_start_components_passes_kv_bucket_and_endpoints() -> None:
         document,
         definitions={"dev.deckr.controller": definition},
     )
-    async with mock_deckr(
-        lane_contracts=plan.lane_contracts,
-        lanes=plan.lane_names,
-    ) as deckr, start_components(deckr, plan):
+    async with (
+        mock_deckr(
+            lane_contracts=plan.lane_contracts,
+            lanes=plan.lane_names,
+        ) as deckr,
+        start_components(deckr, plan),
+    ):
         assert seen["bucket"] is deckr.kv_bucket(policy)
         assert seen["endpoint"] == "controller-main"
 
@@ -507,10 +516,13 @@ async def test_start_components_passes_slot_endpoint_opener_and_protocols() -> N
         definitions={"dev.deckr.controller": definition},
     )
 
-    async with mock_deckr(
-        lane_contracts=plan.lane_contracts,
-        lanes=plan.lane_names,
-    ) as deckr, start_components(deckr, plan) as component_host:
+    async with (
+        mock_deckr(
+            lane_contracts=plan.lane_contracts,
+            lanes=plan.lane_names,
+        ) as deckr,
+        start_components(deckr, plan) as component_host,
+    ):
         await _wait_for_readiness(
             component_host.component_manager,
             "dev.deckr.controller:main",

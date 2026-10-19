@@ -352,6 +352,7 @@ class TestComponentManagerRaceConditions:
             # Either removed or one is running
             assert state is None or state == ComponentState.RUNNING
 
+
 class TestComponentManagerStateManagement:
     """Test state management and query APIs."""
 
@@ -441,9 +442,7 @@ class TestComponentManagerPublicSurface:
         await manager._push_lifecycle(
             ComponentLifecycleEvent(bravo, ComponentLifecycleEventType.ADDED)
         )
-        await manager._push_status(
-            ComponentStatus("bravo", ComponentState.STARTING)
-        )
+        await manager._push_status(ComponentStatus("bravo", ComponentState.STARTING))
         await manager._push_status(
             ComponentStatus(
                 "alpha",
@@ -482,9 +481,7 @@ class TestComponentManagerPublicSurface:
         await manager._push_lifecycle(
             ComponentLifecycleEvent(seed, ComponentLifecycleEventType.ADDED)
         )
-        await manager._push_status(
-            ComponentStatus("seed", ComponentState.RUNNING)
-        )
+        await manager._push_status(ComponentStatus("seed", ComponentState.RUNNING))
 
         lifecycle = manager.subscribe()
         statuses = manager.subscribe_status()
@@ -511,7 +508,9 @@ class TestComponentManagerPublicSurface:
             current_statuses = [await anext(statuses) for _ in expected_names]
 
             assert {event.component.name for event in events} == expected_names
-            assert {status.runtime_name for status in current_statuses} == expected_names
+            assert {
+                status.runtime_name for status in current_statuses
+            } == expected_names
         finally:
             await lifecycle.aclose()
             await statuses.aclose()
@@ -524,9 +523,7 @@ class TestComponentManagerPublicSurface:
         await manager._push_lifecycle(
             ComponentLifecycleEvent(seed, ComponentLifecycleEventType.ADDED)
         )
-        await manager._push_status(
-            ComponentStatus("seed", ComponentState.RUNNING)
-        )
+        await manager._push_status(ComponentStatus("seed", ComponentState.RUNNING))
         lifecycle_subscriptions = []
         status_subscriptions = []
 
@@ -560,9 +557,7 @@ class TestComponentManagerPublicSurface:
         await manager._push_lifecycle(
             ComponentLifecycleEvent(seed, ComponentLifecycleEventType.ADDED)
         )
-        await manager._push_status(
-            ComponentStatus("seed", ComponentState.RUNNING)
-        )
+        await manager._push_status(ComponentStatus("seed", ComponentState.RUNNING))
         lifecycle = manager.subscribe()
         statuses = manager.subscribe_status()
         assert (await anext(lifecycle)).component is seed
@@ -638,7 +633,7 @@ class TestComponentManagerTaskCancellation:
             # Wait and verify task stopped despite stop() exception
             final_counter = component.counter
             await anyio.sleep(0.2)
-            assert (
-                component.counter == final_counter
-            ), "Tasks should stop even when stop() raises exception"
+            assert component.counter == final_counter, (
+                "Tasks should stop even when stop() raises exception"
+            )
             assert not component.task_running

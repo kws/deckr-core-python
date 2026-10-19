@@ -315,8 +315,7 @@ async def test_blocked_pointer_cancellation_cannot_hold_public_authority() -> No
         )
         await participant.wait_for_state(
             lambda state: any(
-                item.contract.pointer == contract.pointer
-                and item.local_authority
+                item.contract.pointer == contract.pointer and item.local_authority
                 for item in state.contracts
             ),
             timeout_seconds=2,
@@ -348,7 +347,9 @@ async def test_blocked_pointer_cancellation_cannot_hold_public_authority() -> No
 
 
 @pytest.mark.asyncio
-async def test_prepared_create_before_commit_failure_never_allocates_a_successor() -> None:
+async def test_prepared_create_before_commit_failure_never_allocates_a_successor() -> (
+    None
+):
     contracts = LifecycleFaultHarness(bucket="contracts")
     tokens = LifecycleFaultHarness(bucket="tokens", ttl_seconds=60)
     contracts.fail_next("create", phase=LifecycleFaultPhase.BEFORE)
@@ -378,6 +379,8 @@ async def test_owner_bootstrap_retries_only_unavailable_stale_cleanup() -> None:
             profile=PROFILE,
             created_by=CONTROLLER,
         )
+        token = await concord._attach(stale, CONTROLLER, "previous-session")
+        await tokens.delete(token.key, revision=token.revision)
         contracts.fail_next("update", phase=LifecycleFaultPhase.BEFORE)
 
         async with concord.propose(

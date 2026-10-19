@@ -1,9 +1,5 @@
 """Dedicated exact/scanning maintenance capability for Concord."""
 
-from deckr._authority_buckets import (
-    CONCORD_MAINTENANCE_BUCKET_POLICY,
-    DEFAULT_CONCORD_MAINTENANCE_BUCKET_NAME,
-)
 from deckr._concord._keys import (
     concord_stale_observation_key,
     concord_token_cleanup_key,
@@ -26,6 +22,10 @@ from deckr._concord._maintenance import (
     ConcordReaperService,
     ConcordStaleObservationRecord,
     ConcordTokenCleanupRecord,
+)
+from deckr.bindings.authority_stores import (
+    CONCORD_MAINTENANCE_BUCKET_POLICY,
+    DEFAULT_CONCORD_MAINTENANCE_BUCKET_NAME,
 )
 
 __all__ = [

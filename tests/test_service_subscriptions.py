@@ -30,7 +30,9 @@ from deckr.services import (
 
 
 @pytest.mark.asyncio
-async def test_shared_resource_subscription_does_not_replay_stale_latest_after_drop() -> None:
+async def test_shared_resource_subscription_does_not_replay_stale_latest_after_drop() -> (
+    None
+):
     async with anyio.create_task_group() as tg:
         use_calls: list[dict[str, Any]] = []
         leases: list[Any] = []
@@ -168,7 +170,9 @@ async def test_shared_resource_subscription_replacement_sets_retained_union() ->
 
 
 @pytest.mark.asyncio
-async def test_shared_resource_subscription_replacement_reapplies_after_reconnect() -> None:
+async def test_shared_resource_subscription_replacement_reapplies_after_reconnect() -> (
+    None
+):
     async with anyio.create_task_group() as tg:
         leases: list[Any] = []
         set_calls: list[frozenset[str]] = []
@@ -227,7 +231,9 @@ async def test_shared_resource_subscription_replacement_reapplies_after_reconnec
 
 
 @pytest.mark.asyncio
-async def test_shared_resource_subscription_lease_monitor_reconnects_without_view_change() -> None:
+async def test_shared_resource_subscription_lease_monitor_reconnects_without_view_change() -> (
+    None
+):
     async with anyio.create_task_group() as tg:
         leases: list[Any] = []
         descriptor = AsyncMock(return_value=_descriptor())
@@ -247,7 +253,7 @@ async def test_shared_resource_subscription_lease_monitor_reconnects_without_vie
             lease = _lease(service_descriptor, generation=len(leases) + 1)
             _bind_fake_managed_service(lease, services)
             if not leases:
-                lease.refresh = first_refresh
+                lease.require_authority = first_refresh
             leases.append(lease)
             try:
                 yield lease
@@ -282,7 +288,9 @@ async def test_shared_resource_subscription_lease_monitor_reconnects_without_vie
 
 
 @pytest.mark.asyncio
-async def test_shared_resource_subscription_active_request_requires_retained_resource() -> None:
+async def test_shared_resource_subscription_active_request_requires_retained_resource() -> (
+    None
+):
     async with anyio.create_task_group() as tg:
         leases: list[Any] = []
         descriptor = AsyncMock(return_value=_descriptor())
@@ -346,7 +354,9 @@ async def test_shared_resource_subscription_active_request_requires_retained_res
 
 
 @pytest.mark.asyncio
-async def test_shared_resource_subscription_required_resource_must_be_retained() -> None:
+async def test_shared_resource_subscription_required_resource_must_be_retained() -> (
+    None
+):
     async with anyio.create_task_group() as tg:
         use_calls: list[dict[str, Any]] = []
         leases: list[Any] = []
@@ -496,7 +506,9 @@ async def test_shared_resource_subscription_unknown_and_closed_session_noops() -
 
 
 @pytest.mark.asyncio
-async def test_shared_resource_subscription_nonterminal_unavailable_does_not_reconnect() -> None:
+async def test_shared_resource_subscription_nonterminal_unavailable_does_not_reconnect() -> (
+    None
+):
     async with anyio.create_task_group() as tg:
         leases: list[Any] = []
         descriptor = AsyncMock(return_value=_descriptor())
@@ -544,8 +556,12 @@ async def test_shared_resource_subscription_nonterminal_unavailable_does_not_rec
         await session.aclose()
         await manager.aclose()
         tg.cancel_scope.cancel()
+
+
 @pytest.mark.asyncio
-async def test_shared_resource_subscription_keeps_slow_subscribers_and_prunes_closed() -> None:
+async def test_shared_resource_subscription_keeps_slow_subscribers_and_prunes_closed() -> (
+    None
+):
     services = SimpleNamespace(
         _task_group=SimpleNamespace(start_soon=lambda *args, **kwargs: None),
         descriptor=AsyncMock(return_value=_descriptor()),
@@ -607,9 +623,7 @@ async def test_shared_resource_subscription_slow_session_resnapshots_after_overf
     with anyio.fail_after(1):
         initial = [await session.messages.receive() for _ in resources]
     assert {message.resource for message in initial} == resources
-    assert all(
-        message.state is ServiceSubscriptionState.PENDING for message in initial
-    )
+    assert all(message.state is ServiceSubscriptionState.PENDING for message in initial)
 
     for index, resource in enumerate(sorted(resources)):
         await manager._emit(  # noqa: SLF001
@@ -624,12 +638,10 @@ async def test_shared_resource_subscription_slow_session_resnapshots_after_overf
     with anyio.fail_after(1):
         converged = [await session.messages.receive() for _ in resources]
     assert {message.resource for message in converged} == resources
-    assert all(
-        message.state is ServiceSubscriptionState.READY for message in converged
-    )
-    assert {message.payload["sequence"] for message in converged if message.payload} == set(
-        range(257)
-    )
+    assert all(message.state is ServiceSubscriptionState.READY for message in converged)
+    assert {
+        message.payload["sequence"] for message in converged if message.payload
+    } == set(range(257))
 
     await session.aclose()
 
@@ -711,7 +723,7 @@ def _lease(
             generation=generation,
         ),
         closed=False,
-        refresh=AsyncMock(),
+        require_authority=AsyncMock(),
     )
 
 
@@ -723,13 +735,13 @@ def _bind_fake_managed_service(lease: Any, services: Any) -> None:
         return services.watch_view(lease, view)
 
     async def refresh():
-        await lease.refresh()
+        await lease.require_authority()
 
     async def wait_for_authority_loss():
         while True:
             await anyio.sleep(0.001)
             try:
-                await lease.refresh()
+                await lease.require_authority()
             except ServiceUnavailable as exc:
                 return exc
 

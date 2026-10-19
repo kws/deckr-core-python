@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -8,8 +9,8 @@ from uuid import UUID
 import anyio
 import pytest
 
+import deckr._beacon._lease as beacon_module
 import deckr._concord._lease as lease_module
-import deckr.beacon as beacon_module
 from deckr.beacon import (
     AdvertisementRecord,
     Beacon,
@@ -620,6 +621,8 @@ async def test_owner_bootstrap_runs_before_every_proposal_and_preserves_live_own
 
     async with _running_concord(contracts, tokens) as concord:
         stale_before = await _create_contract(concord, "stale-before")
+        token = await concord._attach(stale_before, CONTROLLER, "old-session")
+        await tokens.delete(token.key, revision=token.revision)
         async with concord.propose(
             _Endpoint(CONTROLLER, "controller-session"),
             _agreement_spec(),
@@ -630,6 +633,8 @@ async def test_owner_bootstrap_runs_before_every_proposal_and_preserves_live_own
             assert stale_record.state == ContractState.CANCELLED
 
             stale_between = await _create_contract(concord, "stale-between")
+            token = await concord._attach(stale_between, CONTROLLER, "old-session")
+            await tokens.delete(token.key, revision=token.revision)
             async with concord.propose(
                 _Endpoint(CONTROLLER, "controller-session"),
                 _agreement_spec(),
@@ -645,7 +650,7 @@ async def test_owner_bootstrap_runs_before_every_proposal_and_preserves_live_own
 
 
 @pytest.mark.asyncio
-async def test_owner_crash_replacement_cancels_stale_before_fresh_uuid() -> None:
+async def test_owner_restart_preserves_pending_contract_with_live_token() -> None:
     contracts = MemoryJsonKvBucket(bucket="contracts")
     tokens = MemoryJsonKvBucket(bucket="tokens", ttl_seconds=120)
     first = Concord(contracts, tokens)
@@ -671,13 +676,13 @@ async def test_owner_crash_replacement_cancels_stale_before_fresh_uuid() -> None
     ):
         abandoned_record = await replacement.contract_record(abandoned.contract)
         assert abandoned_record is not None
-        assert abandoned_record.state == ContractState.CANCELLED
+        assert abandoned_record.state == ContractState.OPEN
         assert fresh.contract.pointer != abandoned_pointer
         assert fresh.generation == 1
 
 
 @pytest.mark.asyncio
-async def test_participant_restart_before_token_commit_cancels_without_creation() -> None:
+async def test_participant_restart_can_attach_when_no_token_was_committed() -> None:
     contracts = MemoryJsonKvBucket(bucket="contracts")
     tokens = _BlockingTokenCreateBucket("crash-before-token")
     first = Concord(contracts, tokens)
@@ -697,6 +702,7 @@ async def test_participant_restart_before_token_commit_cancels_without_creation(
     first_tasks.cancel_scope.cancel()
     await first_tasks_cm.__aexit__(None, None, None)
 
+    tokens.blocked_contract_id = "no-longer-blocked"
     async with (
         _running_concord(contracts, tokens) as replacement,
         replacement.participant(
@@ -704,10 +710,10 @@ async def test_participant_restart_before_token_commit_cancels_without_creation(
             ConcordParticipantPolicy(profile=PROFILE, select=_accept_all),
         ) as restarted,
     ):
-        assert restarted.managed_contracts == ()
+        assert len(restarted.managed_contracts) == 1
         record = await replacement.contract_record(contract)
-        assert record is not None and record.state == ContractState.CANCELLED
-        assert tokens.mutation_count == token_mutations
+        assert record is not None and record.state == ContractState.OPEN
+        assert tokens.mutation_count > token_mutations
 
 
 def _agreement_spec(
@@ -734,15 +740,18 @@ async def test_beacon_heartbeat_uses_jittered_bucket_ttl(monkeypatch) -> None:
         samples.append((lower, upper))
         return 0.01
 
-    monkeypatch.setattr(beacon_module.random, "uniform", sample)
+    monkeypatch.setattr(random, "uniform", sample)
     raw = MemoryJsonKvBucket(bucket="beacon", ttl_seconds=1)
 
-    async with _running_beacon(raw) as beacon, beacon.advertise(
-        _Endpoint(MANAGER, "manager-session"),
-        BeaconAdvertisementSpec(
-            feature_id="dev.deckr.test.feature.v1",
-        ),
-    ) as lease:
+    async with (
+        _running_beacon(raw) as beacon,
+        beacon.advertise(
+            _Endpoint(MANAGER, "manager-session"),
+            BeaconAdvertisementSpec(
+                feature_id="dev.deckr.test.feature.v1",
+            ),
+        ) as lease,
+    ):
         first = lease._handle  # noqa: SLF001
         assert first is not None
 
@@ -768,16 +777,19 @@ async def test_beacon_manual_update_reschedules_heartbeat(monkeypatch) -> None:
         return lower if len(samples) == 1 else upper
 
     monkeypatch.setattr(beacon_module, "monotonic", lambda: clock[0])
-    monkeypatch.setattr(beacon_module.random, "uniform", sample)
+    monkeypatch.setattr(random, "uniform", sample)
     raw = MemoryJsonKvBucket(bucket="beacon", ttl_seconds=1)
 
-    async with _running_beacon(raw) as beacon, beacon.advertise(
-        _Endpoint(MANAGER, "manager-session"),
-        BeaconAdvertisementSpec(
-            feature_id="dev.deckr.test.feature.v1",
-            payload={"state": "initial"},
-        ),
-    ) as lease:
+    async with (
+        _running_beacon(raw) as beacon,
+        beacon.advertise(
+            _Endpoint(MANAGER, "manager-session"),
+            BeaconAdvertisementSpec(
+                feature_id="dev.deckr.test.feature.v1",
+                payload={"state": "initial"},
+            ),
+        ) as lease,
+    ):
         clock[0] = 100.1
         await lease.update(payload={"state": "updated"})
 
@@ -790,13 +802,16 @@ async def test_beacon_manual_update_reschedules_heartbeat(monkeypatch) -> None:
 async def test_beacon_noop_updates_do_not_bypass_heartbeat_cadence() -> None:
     raw = MemoryJsonKvBucket(bucket="beacon", ttl_seconds=300)
 
-    async with _running_beacon(raw) as beacon, beacon.advertise(
-        _Endpoint(MANAGER, "manager-session"),
-        BeaconAdvertisementSpec(
-            feature_id="dev.deckr.test.feature.v1",
-            payload={"state": "unchanged"},
-        ),
-    ) as lease:
+    async with (
+        _running_beacon(raw) as beacon,
+        beacon.advertise(
+            _Endpoint(MANAGER, "manager-session"),
+            BeaconAdvertisementSpec(
+                feature_id="dev.deckr.test.feature.v1",
+                payload={"state": "unchanged"},
+            ),
+        ) as lease,
+    ):
         initial_handle = lease._handle  # noqa: SLF001
         assert initial_handle is not None
         initial_revision = raw.revision
@@ -812,13 +827,16 @@ async def test_beacon_noop_updates_do_not_bypass_heartbeat_cadence() -> None:
 async def test_beacon_lease_recreates_missing_advertisement_key() -> None:
     raw = MemoryJsonKvBucket(bucket="beacon", ttl_seconds=300)
 
-    async with _running_beacon(raw) as beacon, beacon.advertise(
-        _Endpoint(MANAGER, "manager-session"),
-        BeaconAdvertisementSpec(
-            feature_id="dev.deckr.test.feature.v1",
-            hints={"load": "light"},
-        ),
-    ) as lease:
+    async with (
+        _running_beacon(raw) as beacon,
+        beacon.advertise(
+            _Endpoint(MANAGER, "manager-session"),
+            BeaconAdvertisementSpec(
+                feature_id="dev.deckr.test.feature.v1",
+                hints={"load": "light"},
+            ),
+        ) as lease,
+    ):
         first = lease._handle  # noqa: SLF001
         assert first is not None
         assert await raw.expire(first.key)
@@ -909,7 +927,7 @@ async def test_concord_participant_heartbeat_preserves_due_time_after_early_wake
     async with _running_concord(contracts, tokens) as concord:
         contract = await _create_contract(concord, "heartbeat-schedule")
         lease = lease_module.ConcordParticipantLease(
-            concord._coordinator,  # noqa: SLF001
+            concord._repository,  # noqa: SLF001
             concord._view,  # noqa: SLF001
             contract=contract,
             participant=CONTROLLER,
@@ -934,7 +952,7 @@ async def test_concord_participant_lease_cancels_on_refresh_unavailable() -> Non
     async with _running_concord(contracts, tokens) as concord:
         contract = await _create_contract(concord, "refresh-unavailable")
         lease = lease_module.ConcordParticipantLease(
-            concord._coordinator,  # noqa: SLF001
+            concord._repository,  # noqa: SLF001
             concord._view,  # noqa: SLF001
             contract=contract,
             participant=CONTROLLER,
@@ -964,7 +982,7 @@ async def test_concord_participant_lease_closes_when_cancel_is_unavailable() -> 
     async with _running_concord(contracts, tokens) as concord:
         contract = await _create_contract(concord, "refresh-and-cancel-unavailable")
         lease = lease_module.ConcordParticipantLease(
-            concord._coordinator,  # noqa: SLF001
+            concord._repository,  # noqa: SLF001
             concord._view,  # noqa: SLF001
             contract=contract,
             participant=CONTROLLER,
@@ -994,7 +1012,7 @@ async def test_concord_participant_close_does_not_withdraw_changed_token_owner()
     async with _running_concord(contracts, tokens) as concord:
         contract = await _create_contract(concord, "changed-token-owner")
         lease = lease_module.ConcordParticipantLease(
-            concord._coordinator,  # noqa: SLF001
+            concord._repository,  # noqa: SLF001
             concord._view,  # noqa: SLF001
             contract=contract,
             participant=CONTROLLER,
@@ -1018,9 +1036,7 @@ async def test_concord_participant_close_does_not_withdraw_changed_token_owner()
 
 
 @pytest.mark.asyncio
-async def test_same_session_participant_restart_cancels_without_adopting_token() -> (
-    None
-):
+async def test_same_session_competing_participant_preserves_external_token() -> None:
     contracts = MemoryJsonKvBucket(bucket="contracts")
     tokens = MemoryJsonKvBucket(bucket="tokens", ttl_seconds=120)
 
@@ -1049,23 +1065,17 @@ async def test_same_session_participant_restart_cancels_without_adopting_token()
                 _Endpoint(MANAGER, "manager-session"), policy
             ) as restarted:
                 assert restarted.managed_contracts == ()
-                with anyio.fail_after(2):
-                    while True:
-                        record = await concord.contract_record(contract)
-                        if (
-                            record is not None
-                            and record.state == ContractState.CANCELLED
-                        ):
-                            break
-                        await anyio.sleep(0)
-                assert record.cancel_reason == (
-                    "concord_managed_lost_participant_token"
-                )
+                record = await concord.contract_record(contract)
+                assert record is not None and record.state == ContractState.OPEN
+                assert original.managed_contract(contract).local_authority
                 manager_entry = await tokens.get(manager_token_key)
                 if manager_entry is not None:
-                    assert ParticipantTokenRecord.model_validate(
-                        manager_entry.value
-                    ).session_id == "manager-session"
+                    assert (
+                        ParticipantTokenRecord.model_validate(
+                            manager_entry.value
+                        ).session_id
+                        == "manager-session"
+                    )
 
 
 @pytest.mark.asyncio
@@ -1099,6 +1109,13 @@ async def test_restarted_participant_accepts_one_fresh_successor_after_stale_cle
     first_tasks.cancel_scope.cancel()
     await first_tasks_cm.__aexit__(None, None, None)
 
+    # Only exact loss after attachment proves the abandoned generation stale.
+    key = concord_participant_token_key(
+        contract_id=abandoned.contract_id, generation=1, participant=MANAGER
+    )
+    token = await tokens.get(key)
+    assert token is not None
+    await tokens.delete(key, revision=token.revision)
     async with (
         _running_concord(contracts, tokens) as replacement,
         replacement.participant(

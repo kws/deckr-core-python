@@ -10,9 +10,8 @@ repository. Specifications, schemas, fixtures, conformance vectors, and protocol
 documentation are maintained there. Python models and tests in this repository
 are implementation code, not the authority for the contracts.
 
-This separation preserves the existing Python runtime behavior. Alignment with
-the current reference contracts is separate work; passing these tests does not
-establish conformance to the latest reference release.
+Python regression tests cover protocol behavior and Deckr binding policy separately.
+They do not replace the reference repository’s conformance vectors.
 
 ## Reference material
 
@@ -58,6 +57,7 @@ Run the Python validation suite:
 
 ```bash
 uv run ruff check .
+uv run ruff format --check .
 uv run lint-imports
 uv run pytest --cov-branch --cov-report=json:coverage.json
 uv run python scripts/check_lifecycle_branch_coverage.py coverage.json
@@ -85,14 +85,56 @@ uv run --extra nats python scripts/nats_state_report.py --url nats://127.0.0.1:4
 
 ## Package boundaries
 
-Keep Python code reusable across Deckr components. Internal dependencies are
-enforced by `.importlinter`:
+Keep Python code reusable across Deckr components. The dependency direction is:
 
-- `deckr.core` must not import `deckr.hardware` or `deckr.actions`.
-- `deckr.contracts` must not import `deckr.actions` or `deckr.hardware`.
-- `deckr.hardware` must not import `deckr.actions`.
+```text
+Deckr runtime / components
+    -> hardware, services, actions (Deckr profile policy)
+    -> bindings (Deckr subjects, body codecs, authority-store names)
+    -> protocols.beacon / protocols.concord / protocols.concord_maintenance
+    -> core (wire values, identities, KV ports, currentness, task ownership)
+
+substrates.nats_kv -> core (JSON KV transport, heartbeat and continuity checks)
+bindings.nats -> substrates.nats_kv + contracts + lanes
+```
+
+Generic callers use `deckr.protocols.beacon` and `deckr.protocols.concord`, provide
+KV ports, and choose their own endpoint families and profile policies. The private
+`_beacon` and `_concord` packages implement those APIs. They have no Deckr-domain
+or NATS imports. `deckr.core.kv.JsonKvBucket` describes exact storage operations;
+`KvMaterializedSource` owns snapshots and currentness independently of transport.
+
+Deckr endpoint restrictions live in `deckr.contracts.messages`. Service-use
+admission and hardware claim selection live in their extension packages. The
+runtime injects Deckr body codecs through `MessageContract.body_validator`.
+Applications constructing lane contracts directly can use
+`deckr.bindings.messages.with_deckr_body_codec` for standard Deckr messages.
+
+The existing `deckr.beacon`, `deckr.concord`, `deckr.concord_maintenance`, and
+`deckr.substrates.nats` imports remain compatibility entry points. Their Deckr
+store constants and subject adapter are defined in `deckr.bindings`.
+`ServiceUseLease.require_authority()` checks local authority; its older `refresh()`
+spelling remains an alias and does not renew tokens.
+
+`.importlinter` enforces the generic boundaries and prevents core/contracts from
+importing hardware or actions, and hardware from importing actions. Exact lifecycle
+and subscription inventories guard ownership routes. Production modules have a
+650-line ceiling enforced by tests; split responsibilities before reaching it.
+Long-lived contexts keep lifecycle coordination together, with models, storage,
+indexing, attachment workers, and domain policy in separate modules.
+
+Authority is checked when a capability is used. Source discontinuity permanently
+revokes existing local leases, even if a recovered snapshot coalesces notifications.
+Owner bootstrap preserves healthy participation from other runtimes or sessions;
+a different session or a missing local registry entry is not proof of failure.
+Managed service view streams terminate on revocation even while idle.
 
 Import the hardware package directly as `deckr.hardware`.
+
+Real-broker tests are enabled by `uv sync --extra supervised-nats`, or by setting
+`NATS_SERVER_BINARY` to a local server executable. They run a temporary authenticated
+loopback broker and verify replay, idle heartbeats, and consumer loss. CI installs
+the extra so these tests run there.
 
 ## Releases
 
@@ -112,6 +154,7 @@ independent of the reference contract bundle version.
 
    ```bash
    uv run ruff check .
+uv run ruff format --check .
    uv run lint-imports
    uv run pytest
    ```

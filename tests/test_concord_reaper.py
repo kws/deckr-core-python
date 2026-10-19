@@ -210,7 +210,10 @@ def _harness(
 
 async def _contract(harness: ConcordMaintenanceHarness, *, contract_id: str):
     return await harness.concord._create_contract(
-        (controller_address("controller-main"), hardware_manager_address("manager-main")),
+        (
+            controller_address("controller-main"),
+            hardware_manager_address("manager-main"),
+        ),
         contract_id=contract_id,
         profile=PROFILE,
         terms={"profile": PROFILE, "contract": contract_id},
@@ -222,7 +225,9 @@ async def _delete_token(harness: ConcordMaintenanceHarness, token) -> None:
     await harness.token_store.delete(token.key, revision=token.revision)
 
 
-async def _stale_observation(maintenance_state, contract) -> ConcordStaleObservationRecord:
+async def _stale_observation(
+    maintenance_state, contract
+) -> ConcordStaleObservationRecord:
     entry = await maintenance_state.get(
         concord_stale_observation_key(
             contract_id=contract.contract_id,
@@ -332,11 +337,15 @@ async def test_missing_token_contract_cancelled_only_after_stale_grace() -> None
     assert (await reaper.scan_once()).contracts_cancelled == 1
     persisted = await contract_state.get_exact(contract.key)
     assert persisted is not None
-    assert ContractRecord.model_validate(persisted.value).state == ContractState.CANCELLED
+    assert (
+        ContractRecord.model_validate(persisted.value).state == ContractState.CANCELLED
+    )
 
 
 @pytest.mark.asyncio
-async def test_unavailable_status_does_not_create_or_advance_stale_observation() -> None:
+async def test_unavailable_status_does_not_create_or_advance_stale_observation() -> (
+    None
+):
     clock = ManualClock()
     contract_state, token_state, maintenance_state = _stores()
     harness = _harness(
@@ -424,7 +433,9 @@ async def test_malformed_token_makes_open_contract_stale_and_cancellable() -> No
     assert result.contracts_cancelled == 1
     persisted = await contract_state.get_exact(contract.key)
     assert persisted is not None
-    assert ContractRecord.model_validate(persisted.value).state == ContractState.CANCELLED
+    assert (
+        ContractRecord.model_validate(persisted.value).state == ContractState.CANCELLED
+    )
 
 
 @pytest.mark.asyncio
@@ -516,7 +527,10 @@ async def test_cancelled_contract_deleted_after_retention_and_tokens_removed(
     assert "created_by=controller:controller-main" in log_text
     assert "cancelled_by=concord:maintenance" in log_text
     assert f"cancel_reason={CONCORD_REAPER_STALE_CONTRACT_REASON}" in log_text
-    assert canonical_json_hash({"profile": PROFILE, "contract": "deleted-contract"}) in log_text
+    assert (
+        canonical_json_hash({"profile": PROFILE, "contract": "deleted-contract"})
+        in log_text
+    )
     assert "controller:controller-main" in log_text
     assert "hardware_manager:manager-main" in log_text
     assert "controller-session" in log_text

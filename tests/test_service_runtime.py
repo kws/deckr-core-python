@@ -278,8 +278,6 @@ def _contract_record(
         attached_participants=contract.attached_participants,
         state=contract.state,
         profile=contract.profile,
-        terms=None,
-        terms_hash=None,
     )
 
 
@@ -1059,7 +1057,7 @@ async def test_service_view_store_ignores_old_fenced_entries() -> None:
 async def test_service_view_store_logs_exact_write_after_view_observation(
     caplog,
 ) -> None:
-    caplog.set_level(logging.DEBUG, logger="deckr.services.views")
+    caplog.set_level(logging.DEBUG, logger="deckr.services.view_records")
     protocol, lease, view_ref = await _service_view_context()
     raw = MemoryJsonKvBucket(bucket=view_ref.store_name)
     view_store = ServiceViewStore(bucket=raw)

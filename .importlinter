@@ -29,17 +29,6 @@ forbidden_modules =
     deckr.actions
     deckr.hardware
 
-[importlinter:contract:runtime_must_not_import_services]
-name = Runtime must not import service APIs
-type = forbidden
-source_modules =
-    deckr.runtime
-forbidden_modules =
-    deckr.services
-ignore_imports =
-    deckr.runtime -> deckr.services
-allow_indirect_imports = True
-
 [importlinter:contract:hardware_must_not_import_actions]
 name = Hardware must not import action APIs
 type = forbidden
@@ -47,3 +36,69 @@ source_modules =
     deckr.hardware
 forbidden_modules =
     deckr.actions
+
+[importlinter:contract:generic_core]
+name = Generic core is independent of protocols and Deckr bindings
+type = forbidden
+source_modules =
+    deckr.core
+forbidden_modules =
+    deckr.contracts
+    deckr._beacon
+    deckr._concord
+    deckr.services
+    deckr.bindings
+    deckr.substrates
+
+[importlinter:contract:generic_protocols]
+name = Beacon and Concord do not depend on Deckr profiles or NATS
+type = forbidden
+source_modules =
+    deckr._beacon
+    deckr._concord
+    deckr.protocols
+forbidden_modules =
+    deckr.contracts
+    deckr.hardware
+    deckr.actions
+    deckr.services
+    deckr.bindings
+    deckr.substrates
+
+[importlinter:contract:generic_nats]
+name = JSON KV transport has no protocol or Deckr dependencies
+type = forbidden
+source_modules =
+    deckr.substrates.nats_kv
+    deckr.substrates._nats_materialized
+    deckr.substrates._nats_watch
+    deckr.substrates._nats_kv_bucket
+    deckr.substrates._nats_kv_policy
+    deckr.substrates._nats_kv_records
+forbidden_modules =
+    deckr.contracts
+    deckr._beacon
+    deckr._concord
+    deckr.hardware
+    deckr.actions
+    deckr.services
+    deckr.bindings
+
+[importlinter:contract:lane_body_injection]
+name = Lane dispatch does not know Deckr domain bodies
+type = forbidden
+source_modules =
+    deckr.lanes
+forbidden_modules =
+    deckr.hardware
+    deckr.actions
+    deckr.services
+    deckr.bindings
+
+[importlinter:contract:service_transport]
+name = Services depend on KV ports rather than NATS
+type = forbidden
+source_modules =
+    deckr.services
+forbidden_modules =
+    deckr.substrates

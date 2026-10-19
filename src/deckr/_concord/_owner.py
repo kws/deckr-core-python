@@ -9,33 +9,32 @@ from deckr._concord._models import (
     ConcordConflict,
     ConcordConflictCode,
     ConcordUnavailable,
+    ConcordUnavailableCode,
     ContractState,
+    ContractValidityStatus,
 )
-from deckr._concord._store import ConcordKvStore
+from deckr._concord._repository import ConcordRepository
 from deckr._concord._view import ConcordView
-from deckr.contracts.authority import ContractPointer
-from deckr.contracts.messages import EndpointAddress, parse_endpoint_address
+from deckr.core.identity import ContractPointer, EndpointAddress, parse_endpoint_address
 
 _OWNER_RETRY_INITIAL_SECONDS = 0.1
 _OWNER_RETRY_MAX_SECONDS = 5.0
 
 
 class ConcordOwnerBootstrap:
-    """Process-local ownership registry and stale-contract cleanup gate.
+    """Cancel proven authority loss without displacing competing live owners.
 
-    A new :class:`Concord` instance starts with an empty registry.  Its first
-    proposal for an endpoint therefore cancels every open contract created by
-    that endpoint before the new prepared pointer may be committed.  Pointers
-    already owned by live contexts in this process are excluded only when they
-    belong to the same endpoint session.
+    Registry absence and session changes are not failure evidence. Profile
+    owners must implement any exclusive admission or deliberate replacement.
     """
 
-    def __init__(self, store: ConcordKvStore, view: ConcordView) -> None:
+    def __init__(self, store: ConcordRepository, view: ConcordView) -> None:
         self._store = store
         self._view = view
         self._locks: defaultdict[str, anyio.Lock] = defaultdict(anyio.Lock)
         self._active_lock = anyio.Lock()
         self._active: defaultdict[str, dict[ContractPointer, str]] = defaultdict(dict)
+        self._released: defaultdict[str, set[ContractPointer]] = defaultdict(set)
 
     async def claim(
         self,
@@ -68,7 +67,8 @@ class ConcordOwnerBootstrap:
     ) -> None:
         key = str(parse_endpoint_address(endpoint))
         async with self._active_lock:
-            self._active[key].pop(pointer, None)
+            if self._active[key].pop(pointer, None) is not None:
+                self._released[key].add(pointer)
 
     async def _cancel_until_resolved(
         self,
@@ -87,8 +87,7 @@ class ConcordOwnerBootstrap:
             except ConcordConflict as exc:
                 if exc.code != ConcordConflictCode.REVISION_CHANGED:
                     raise
-                delay = _OWNER_RETRY_INITIAL_SECONDS
-                continue
+                pass
             except ConcordUnavailable:
                 pass
             await anyio.sleep(random.uniform(delay * 0.5, delay))
@@ -106,19 +105,34 @@ class ConcordOwnerBootstrap:
         )
         key = str(endpoint)
         async with self._active_lock:
-            current = {
-                pointer
-                for pointer, owned_session in self._active[key].items()
-                if owned_session == session_id
+            current = set(self._active[key])
+            self._released[key].intersection_update(
+                item.contract.pointer for item in snapshot.contracts
+            )
+            released = set(self._released[key])
+        for state in snapshot.contracts:
+            pointer = state.contract.pointer
+            if state.record.created_by != endpoint or pointer in current:
+                continue
+            # No local session assertions: the other runtime may legitimately
+            # hold a different session, including while the contract is pending.
+            validity = await self._store.validate_exact(state.contract)
+            if validity.status == ContractValidityStatus.UNAVAILABLE:
+                raise ConcordUnavailable(
+                    ConcordUnavailableCode.STORE_UNAVAILABLE,
+                    "Owner bootstrap exact state unavailable",
+                )
+            proven_loss = validity.status in {
+                ContractValidityStatus.MISSING_TOKEN,
+                ContractValidityStatus.INVALID_TOKEN,
+                ContractValidityStatus.GENERATION_MISMATCH,
+                ContractValidityStatus.SESSION_MISMATCH,
+                ContractValidityStatus.TERMS_HASH_MISMATCH,
             }
-        stale = tuple(
-            state.contract.pointer
-            for state in snapshot.contracts
-            if state.record.created_by == endpoint
-            and state.contract.pointer not in current
-        )
-        for stale_pointer in stale:
-            await self._cancel_until_resolved(stale_pointer, endpoint)
+            if pointer in released or proven_loss:
+                await self._cancel_until_resolved(pointer, endpoint)
+                async with self._active_lock:
+                    self._released[key].discard(pointer)
 
 
 __all__ = ["ConcordOwnerBootstrap"]

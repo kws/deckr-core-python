@@ -43,11 +43,14 @@ _DEFAULT_CONFIG_DOCUMENT_TEXT = """# Deckr configuration document
 async def run_configured_deckr(document: ConfigDocument) -> None:
     plan = resolve_component_host_plan(document)
     message_bus = build_runtime_substrate(document, lane_contracts=plan.lane_contracts)
-    async with Deckr(
-        lane_contracts=plan.lane_contracts,
-        lanes=plan.lane_names,
-        message_bus=message_bus,
-    ) as deckr, start_components(deckr, plan):
+    async with (
+        Deckr(
+            lane_contracts=plan.lane_contracts,
+            lanes=plan.lane_names,
+            message_bus=message_bus,
+        ) as deckr,
+        start_components(deckr, plan),
+    ):
         await anyio.sleep_forever()
 
 

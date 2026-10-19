@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import anyio
 
-from deckr._authority_buckets import CONCORD_REAPER_COMPONENT_ID
+from deckr.bindings.authority_stores import CONCORD_REAPER_COMPONENT_ID
 from deckr.components import (
     BaseComponent,
     ComponentContext,

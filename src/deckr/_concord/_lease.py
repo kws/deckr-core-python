@@ -17,12 +17,10 @@ from deckr._concord._models import (
     ContractHandle,
     ParticipantHandle,
 )
-from deckr._concord._store import (
-    MAX_ATTACHED_PARTICIPANT_CAS_ATTEMPTS,
-    ConcordKvStore,
-)
+from deckr._concord._mutation_validation import MAX_ATTACHED_PARTICIPANT_CAS_ATTEMPTS
+from deckr._concord._repository import ConcordRepository
 from deckr._concord._view import ConcordView
-from deckr.contracts.messages import EndpointAddress, parse_endpoint_address
+from deckr.core.identity import EndpointAddress, parse_endpoint_address
 
 CONCORD_LIFECYCLE_CLEANUP_SECONDS = 5.0
 
@@ -63,7 +61,7 @@ class ConcordParticipantLease:
 
     def __init__(
         self,
-        store: ConcordKvStore,
+        store: ConcordRepository,
         view: ConcordView,
         *,
         contract: ContractHandle,
@@ -73,6 +71,7 @@ class ConcordParticipantLease:
     ) -> None:
         self._store = store
         self._view = view
+        self._source_generations = view.source_generations
         self.contract = contract
         self.participant = parse_endpoint_address(participant)
         self.session_id = session_id
@@ -104,6 +103,11 @@ class ConcordParticipantLease:
     def token(self) -> ParticipantHandle | None:
         """Return the token only while it is locally held authority."""
 
+        if (
+            not self._view.is_current()
+            or self._source_generations != self._view.source_generations
+        ):
+            self.relinquish_local_authority()
         return self._authority_token
 
     @property
@@ -192,9 +196,7 @@ class ConcordParticipantLease:
                     await self._view.wait_token_revision(token.key, token.revision)
                     await self._abort_attach_if_inactive()
                     self._authority_token = token
-                    self._refresh_delay = concord_token_refresh_delay(
-                        token.ttl_seconds
-                    )
+                    self._refresh_delay = concord_token_refresh_delay(token.ttl_seconds)
                     self._last_refresh_at = monotonic()
                     await self._publish(
                         ConcordParticipantLeasePhase.ACTIVE,
@@ -216,11 +218,7 @@ class ConcordParticipantLease:
         """Refresh only the exact already-held token."""
 
         async with self._operation_lock:
-            if (
-                self._closed
-                or self._authority_lost
-                or self._authority_token is None
-            ):
+            if self._closed or self._authority_lost or self.token is None:
                 raise ConcordConflict(
                     ConcordConflictCode.LEASE_CLOSED,
                     "Concord participant lease has no live local authority",
@@ -282,12 +280,12 @@ class ConcordParticipantLease:
         """Heartbeat an already-held token until authority is lost or closed."""
 
         while not self._closed:
-            token = self._authority_token
+            token = self.token
             if token is None:
                 return
             delay = self._next_heartbeat_delay()
             await anyio.sleep(delay)
-            if self._closed or self._authority_token is None:
+            if self._closed or self.token is None:
                 return
             try:
                 await self.refresh()
@@ -434,6 +432,11 @@ class ConcordParticipantLease:
         )
 
     async def _abort_attach_if_inactive(self) -> None:
+        if (
+            not self._view.is_current()
+            or self._source_generations != self._view.source_generations
+        ):
+            self.relinquish_local_authority()
         if not self._closed and not self._authority_lost:
             return
         self._authority_token = None

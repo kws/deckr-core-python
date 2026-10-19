@@ -102,5 +102,3 @@ def test_hardware_messages_reject_non_finite_json_values():
                 "value": {"level": float("nan")},
             }
         )
-
-

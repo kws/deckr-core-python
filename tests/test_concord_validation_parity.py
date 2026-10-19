@@ -263,7 +263,7 @@ async def test_token_entry_key_mismatch_has_exact_and_cached_parity() -> None:
         raw_entry.revision,
     )
     case.harness.token_store._entries[canonical_key] = mismatched  # noqa: SLF001
-    case.harness.concord._view._token_entries_by_key[  # noqa: SLF001
+    case.harness._token_view._entries[  # noqa: SLF001
         canonical_key
     ] = mismatched
 
@@ -277,8 +277,10 @@ async def test_token_entry_key_mismatch_has_exact_and_cached_parity() -> None:
     )
 
     assert exact.status == cached.status == ContractValidityStatus.INVALID_TOKEN
-    assert exact.reason_code == cached.reason_code == (
-        ContractValidityReason.TOKEN_KEY_MISMATCH
+    assert (
+        exact.reason_code
+        == cached.reason_code
+        == (ContractValidityReason.TOKEN_KEY_MISMATCH)
     )
     assert exact.contract == cached.contract == case.contract
     assert exact.tokens == cached.tokens
@@ -299,7 +301,7 @@ async def test_contract_entry_key_mismatch_has_exact_and_cached_parity() -> None
         raw_entry.revision,
     )
     case.harness.contract_store._entries[canonical_key] = mismatched  # noqa: SLF001
-    case.harness.concord._view._contract_entries_by_key[  # noqa: SLF001
+    case.harness._contract_view._entries[  # noqa: SLF001
         canonical_key
     ] = mismatched
 
@@ -313,8 +315,10 @@ async def test_contract_entry_key_mismatch_has_exact_and_cached_parity() -> None
     )
 
     assert exact.status == cached.status == ContractValidityStatus.INVALID_CONTRACT
-    assert exact.reason_code == cached.reason_code == (
-        ContractValidityReason.CONTRACT_KEY_MISMATCH
+    assert (
+        exact.reason_code
+        == cached.reason_code
+        == (ContractValidityReason.CONTRACT_KEY_MISMATCH)
     )
     assert exact.contract == cached.contract == case.contract
     assert exact.tokens == cached.tokens

@@ -4,10 +4,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 
-from deckr._concord._keys import (
-    concord_contract_key,
-    concord_participant_token_key,
-)
+from deckr._concord._keys import concord_contract_key, concord_participant_token_key
 from deckr._concord._models import (
     ContractRecord,
     ContractState,
@@ -19,9 +16,8 @@ from deckr._concord._models import (
     participant_handle,
     require_text,
 )
-from deckr.contracts.authority import ContractPointer
-from deckr.contracts.messages import EndpointAddress, parse_endpoint_address
-from deckr.substrates.nats_kv import KvEntry
+from deckr.core.identity import ContractPointer, EndpointAddress, parse_endpoint_address
+from deckr.core.kv import KvEntry
 
 
 class ConcordObservationState(StrEnum):
@@ -104,7 +100,7 @@ def contract_observation_from_entry(
     if entry is None:
         return ContractObservation(key, None, ConcordObservationState.MISSING)
     try:
-        record = ContractRecord.model_validate(entry.value)
+        record = ContractRecord.from_wire(entry.value)
     except (TypeError, ValueError) as exc:
         return ContractObservation(
             entry.key,
@@ -134,7 +130,7 @@ def token_observation_from_entry(
             ConcordObservationState.MISSING,
         )
     try:
-        record = ParticipantTokenRecord.model_validate(entry.value)
+        record = ParticipantTokenRecord.from_wire(entry.value)
     except (TypeError, ValueError) as exc:
         return ParticipantTokenObservation(
             entry.key,
@@ -317,12 +313,8 @@ def evaluate_contract_validity(
             )
         frozen_session = parsed_contract.participant_sessions.get(participant_key)
         asserted_session = assertions.get(participant)
-        if (
-            frozen_session is not None
-            and token.session_id != frozen_session
-        ) or (
-            asserted_session is not None
-            and token.session_id != asserted_session
+        if (frozen_session is not None and token.session_id != frozen_session) or (
+            asserted_session is not None and token.session_id != asserted_session
         ):
             return ContractValidity(
                 ContractValidityStatus.SESSION_MISMATCH,

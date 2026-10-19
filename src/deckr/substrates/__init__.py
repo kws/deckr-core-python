@@ -1,15 +1,26 @@
-"""Deckr lane substrate implementations."""
+"""Optional transport adapters and local NATS server supervision."""
 
-from deckr.substrates.nats import NatsSubstrate
-from deckr.substrates.supervised_nats import (
-    NatsServerBinaryResolver,
-    NatsServerSupervisor,
-    SupervisedNatsSubstrate,
-)
+from importlib import import_module
 
-__all__ = [
-    "NatsServerBinaryResolver",
-    "NatsServerSupervisor",
-    "NatsSubstrate",
-    "SupervisedNatsSubstrate",
-]
+_EXPORTS = {
+    "NatsSubstrate": ("deckr.bindings.nats", "DeckrNatsSubstrate"),
+    "NatsServerBinaryResolver": (
+        "deckr.substrates.nats_binary",
+        "NatsServerBinaryResolver",
+    ),
+    "NatsServerSupervisor": ("deckr.substrates.nats_server", "NatsServerSupervisor"),
+    "SupervisedNatsSubstrate": (
+        "deckr.substrates._supervised_substrate",
+        "SupervisedNatsSubstrate",
+    ),
+}
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str):
+    if name not in _EXPORTS:
+        raise AttributeError(name)
+    module, attribute = _EXPORTS[name]
+    value = getattr(import_module(module), attribute)
+    globals()[name] = value
+    return value

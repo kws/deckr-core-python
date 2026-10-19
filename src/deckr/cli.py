@@ -13,8 +13,7 @@ def _require_click() -> Any:
         import click
     except ModuleNotFoundError as exc:
         raise SystemExit(
-            "The `deckr` CLI requires the optional `cli` extra. "
-            "Install `deckr[cli]`."
+            "The `deckr` CLI requires the optional `cli` extra. Install `deckr[cli]`."
         ) from exc
     return click
 
@@ -39,7 +38,9 @@ def _format_cli_error(exc: BaseException) -> str:
         return str(exc)
     if len(messages) == 1:
         return messages[0]
-    return "Multiple errors occurred:\n" + "\n".join(f"- {message}" for message in messages)
+    return "Multiple errors occurred:\n" + "\n".join(
+        f"- {message}" for message in messages
+    )
 
 
 def _configure_cli_logging(log_config: str | None) -> None:

@@ -28,7 +28,9 @@ def _require_text(value: str, *, field_name: str) -> str:
     if not isinstance(value, str):
         raise TypeError(f"{field_name} must be a string")
     if value.strip() != value:
-        raise ValueError(f"{field_name} must not contain leading or trailing whitespace")
+        raise ValueError(
+            f"{field_name} must not contain leading or trailing whitespace"
+        )
     if not value:
         raise ValueError(f"{field_name} must not be empty")
     return value
@@ -156,7 +158,7 @@ def service_body_for_type(
                 f"got {type(body).__name__}"
             )
         return body
-    return body_type.model_validate(thaw_json(body))
+    return body_type.from_wire(thaw_json(body))
 
 
 def service_body(message: DeckrMessage) -> ServiceMessageBody:

@@ -20,6 +20,7 @@ from deckr.concord import (
 from deckr.contracts.messages import SERVICES_LANE, DeckrMessage
 from deckr.lanes import EndpointSession
 from deckr.services.client import ManagedServiceContract
+from deckr.services.profile import is_service_use_record
 from deckr.services.runtime import (
     AuthorizedServiceMessage,
     ServiceBackendStatus,
@@ -79,9 +80,10 @@ class ServiceProvider:
             ),
         )
         self._advertisement: BeaconAdvertisementLease | None = None
-        self._subscription_cm: AbstractAsyncContextManager[
-            anyio.abc.ObjectReceiveStream[DeckrMessage]
-        ] | None = None
+        self._subscription_cm: (
+            AbstractAsyncContextManager[anyio.abc.ObjectReceiveStream[DeckrMessage]]
+            | None
+        ) = None
         self._requests: anyio.abc.ObjectReceiveStream[DeckrMessage] | None = None
         self._entered = False
         self._closed = False
@@ -131,7 +133,7 @@ class ServiceProvider:
         raise anyio.ClosedResourceError
 
     async def _enter(self) -> ServiceProvider:
-        await self._concord._bootstrap_owner(self.endpoint)  # noqa: SLF001
+        await self._concord.bootstrap_owner(self.endpoint)  # noqa: SLF001
         if self._closed:
             raise anyio.ClosedResourceError
         await self._participant.__aenter__()
@@ -325,8 +327,11 @@ class ServiceProvider:
         return ConcordParticipantSelection(
             candidate.contract.pointer
             for candidate in candidates
-            if candidate.record.terms is None
-            and self.endpoint.address in candidate.record.participants
+            if is_service_use_record(
+                candidate.record,
+                profile=self.protocol.use_profile,
+                service=self.endpoint.address,
+            )
             and candidate.record.participant_sessions.get(str(self.endpoint.address))
             == self.endpoint.session_id
         )

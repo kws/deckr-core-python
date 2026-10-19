@@ -446,7 +446,9 @@ async def test_concord_watch_oversized_snapshot_and_overflow_converge() -> None:
 
 
 @pytest.mark.asyncio
-async def test_participant_bootstrap_cancels_stale_then_watches_new_contracts() -> None:
+async def test_participant_bootstrap_attaches_pending_and_watches_new_contracts() -> (
+    None
+):
     concord, contracts, tokens = _concord()
     controller = controller_address("controller-main")
     manager = hardware_manager_address("manager-main")
@@ -468,9 +470,10 @@ async def test_participant_bootstrap_cancels_stale_then_watches_new_contracts() 
         ):
             initial = await _receive(snapshots)
             assert isinstance(initial, ConcordParticipantState)
-            assert initial.contracts == ()
+            assert len(initial.contracts) == 1
+            assert initial.contracts[0].local_authority
             stale = await concord.contract_record(contract)
-            assert stale is not None and stale.state == ContractState.CANCELLED
+            assert stale is not None and stale.state == ContractState.OPEN
 
             contract = await concord._create_contract(
                 (controller, manager),

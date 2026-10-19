@@ -31,7 +31,9 @@ def test_load_launcher_document_passes_path_to_default_loader(
         captured["default_text"] = default_text
         return document
 
-    monkeypatch.setattr("deckr.launcher.load_config_document", fake_load_config_document)
+    monkeypatch.setattr(
+        "deckr.launcher.load_config_document", fake_load_config_document
+    )
 
     loaded = load_launcher_document(
         tmp_path / "deckr.toml",
@@ -43,8 +45,7 @@ def test_load_launcher_document_passes_path_to_default_loader(
     assert captured["default_text"] == "[deckr]\n"
 
 
-def test_validate_component_configuration_rejects_empty_document(
-) -> None:
+def test_validate_component_configuration_rejects_empty_document() -> None:
     with pytest.raises(ValueError, match="does not define any component instances"):
         validate_component_configuration(
             ConfigDocument(raw={"deckr": {}}, source_path=None, base_dir=Path.cwd())
@@ -76,7 +77,9 @@ def test_launch_runs_before_run_hook_and_anyio(
         captured["anyio_document"] = loaded
         captured["anyio_runner"] = runner
 
-    monkeypatch.setattr("deckr.launcher.validate_component_configuration", fake_validate)
+    monkeypatch.setattr(
+        "deckr.launcher.validate_component_configuration", fake_validate
+    )
     monkeypatch.setattr("deckr.launcher.anyio.run", fake_anyio_run)
 
     launch(

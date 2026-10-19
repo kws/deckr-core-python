@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from types import MappingProxyType
@@ -10,6 +10,7 @@ from deckr.contracts.messages import (
     HARDWARE_MESSAGES_LANE,
     SERVICE_MESSAGES_SCHEMA_ID,
     SERVICES_LANE,
+    DeckrMessage,
 )
 
 EndpointFamilies = frozenset[str]
@@ -25,6 +26,9 @@ class ContractRequirement(StrEnum):
 @dataclass(frozen=True, slots=True)
 class MessageContract:
     lane: str
+    body_validator: Callable[[DeckrMessage], object] | None = field(
+        default=None, compare=False, repr=False, kw_only=True
+    )
     schema_id: str | None = None
     message_types: frozenset[str] = frozenset()
     allowed_sender_families: EndpointFamilies | None = None

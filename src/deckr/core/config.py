@@ -21,7 +21,9 @@ _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 def _freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return MappingProxyType({str(key): _freeze(item) for key, item in value.items()})
+        return MappingProxyType(
+            {str(key): _freeze(item) for key, item in value.items()}
+        )
     if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
         return tuple(_freeze(item) for item in value)
     return value
@@ -37,9 +39,13 @@ def substitute_config_environment(
         inner = match.group(1)
         name, separator, default = inner.partition(":-")
         if not separator and ":" in name:
-            raise ValueError(f"Invalid configuration environment placeholder: {inner!r}")
+            raise ValueError(
+                f"Invalid configuration environment placeholder: {inner!r}"
+            )
         if not _ENV_NAME_RE.fullmatch(name):
-            raise ValueError(f"Invalid configuration environment variable name: {name!r}")
+            raise ValueError(
+                f"Invalid configuration environment variable name: {name!r}"
+            )
         value = env.get(name)
         if value:
             return value
@@ -152,7 +158,9 @@ def _load_payload(
     return {"deckr": {}}, None
 
 
-def _validate_config_source_fragment(fragment: Mapping[str, Any], *, source_id: str) -> None:
+def _validate_config_source_fragment(
+    fragment: Mapping[str, Any], *, source_id: str
+) -> None:
     deckr = fragment.get("deckr")
     if not isinstance(deckr, Mapping):
         return
@@ -248,7 +256,9 @@ def _file_config_source(context: ConfigSourceContext) -> Sequence[Mapping[str, A
     unknown = sorted(set(context.source_config) - allowed)
     if unknown:
         names = ", ".join(unknown)
-        raise ValueError(f"Config source {context.source_id!r} unknown field(s): {names}")
+        raise ValueError(
+            f"Config source {context.source_id!r} unknown field(s): {names}"
+        )
 
     paths = context.source_config.get("paths")
     if isinstance(paths, str) or not isinstance(paths, Sequence):
@@ -283,7 +293,9 @@ def _file_config_source(context: ConfigSourceContext) -> Sequence[Mapping[str, A
             )
         pattern_path = Path(item).expanduser()
         pattern = str(
-            pattern_path if pattern_path.is_absolute() else context.base_dir / pattern_path
+            pattern_path
+            if pattern_path.is_absolute()
+            else context.base_dir / pattern_path
         )
         matches = sorted(Path(path) for path in glob(pattern))
         if not matches:

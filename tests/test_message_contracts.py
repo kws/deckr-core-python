@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from deckr.actions import endpoints as action_endpoints
+from deckr.bindings.messages import with_deckr_body_codec
 from deckr.contracts.lanes import (
     CORE_LANE_CONTRACTS,
     ContractRequirement,
@@ -166,7 +167,7 @@ def test_core_lane_validation_checks_message_type_body_pair() -> None:
     with pytest.raises(ValidationError, match="serviceNamespace"):
         validate_message_for_contract(
             message,
-            CORE_LANE_CONTRACTS[SERVICES_LANE],
+            with_deckr_body_codec(CORE_LANE_CONTRACTS[SERVICES_LANE]),
         )
 
 
@@ -200,14 +201,18 @@ def test_contract_validation_rejects_wrong_lane() -> None:
     message = _valid_service_message(lane="other")
 
     with pytest.raises(ValueError, match="does not match contract"):
-        validate_message_for_contract(message, CORE_LANE_CONTRACTS[SERVICES_LANE])
+        validate_message_for_contract(
+            message, with_deckr_body_codec(CORE_LANE_CONTRACTS[SERVICES_LANE])
+        )
 
 
 def test_contract_validation_rejects_bad_message_type() -> None:
     message = _valid_service_message(messageType="unknown")
 
     with pytest.raises(ValueError, match="not supported"):
-        validate_message_for_contract(message, CORE_LANE_CONTRACTS[SERVICES_LANE])
+        validate_message_for_contract(
+            message, with_deckr_body_codec(CORE_LANE_CONTRACTS[SERVICES_LANE])
+        )
 
 
 def test_contract_validation_rejects_disallowed_recipient_family() -> None:
@@ -216,7 +221,9 @@ def test_contract_validation_rejects_disallowed_recipient_family() -> None:
     )
 
     with pytest.raises(ValueError, match="Recipient family"):
-        validate_message_for_contract(message, CORE_LANE_CONTRACTS[SERVICES_LANE])
+        validate_message_for_contract(
+            message, with_deckr_body_codec(CORE_LANE_CONTRACTS[SERVICES_LANE])
+        )
 
 
 def test_contract_validation_rejects_bad_broadcast_target() -> None:
@@ -228,7 +235,9 @@ def test_contract_validation_rejects_bad_broadcast_target() -> None:
     )
 
     with pytest.raises(ValueError, match="Broadcast target"):
-        validate_message_for_contract(message, CORE_LANE_CONTRACTS[SERVICES_LANE])
+        validate_message_for_contract(
+            message, with_deckr_body_codec(CORE_LANE_CONTRACTS[SERVICES_LANE])
+        )
 
 
 def test_expired_message_is_not_deliverable() -> None:

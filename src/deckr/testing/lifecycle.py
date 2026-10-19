@@ -12,7 +12,7 @@ from typing import Any
 import anyio
 
 from deckr.contracts.models import DeckrModel
-from deckr.substrates.nats_kv import KvEntry, KvUnavailable
+from deckr.core.kv import KvEntry, KvUnavailable
 from deckr.testing.kv import MemoryJsonKvBucket
 
 

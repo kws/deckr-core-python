@@ -95,7 +95,9 @@ def test_control_relations_must_reference_existing_controls() -> None:
 
 
 def test_projection_sources_must_reference_real_capabilities() -> None:
-    payload = copy.deepcopy(descriptor_payloads()["momentary_button_with_press_projection"])
+    payload = copy.deepcopy(
+        descriptor_payloads()["momentary_button_with_press_projection"]
+    )
     projected = payload["controls"][0]["inputCapabilities"][1]
     projected["projection"]["source"]["capabilityId"] = "missing"
 
@@ -120,7 +122,9 @@ def test_capability_rejects_unsupported_deckr_owned_family() -> None:
         "access": ["settable"],
     }
 
-    with pytest.raises(ValidationError, match="unsupported Deckr core capability family"):
+    with pytest.raises(
+        ValidationError, match="unsupported Deckr core capability family"
+    ):
         CapabilityDescriptor.model_validate(payload)
 
 
@@ -161,11 +165,15 @@ def test_core_button_types_have_distinct_event_semantics() -> None:
         "eventTypes": ["down", "up"],
     }
 
-    with pytest.raises(ValidationError, match="activation capabilities emit press only"):
+    with pytest.raises(
+        ValidationError, match="activation capabilities emit press only"
+    ):
         CapabilityDescriptor.model_validate(payload)
 
 
-def test_core_touch_raster_and_power_capabilities_require_full_known_type_lists() -> None:
+def test_core_touch_raster_and_power_capabilities_require_full_known_type_lists() -> (
+    None
+):
     touch_payload = {
         "capabilityId": "touch.gesture",
         "family": DECKR_INPUT_TOUCH,

@@ -115,25 +115,25 @@ class DevicePowerCommandParams(DeckrModel):
 def button_activation_input_value(value: object) -> ButtonActivationInputValue:
     """Parse the value for a button activation input event."""
 
-    return ButtonActivationInputValue.model_validate(thaw_json(value))
+    return ButtonActivationInputValue.from_wire(thaw_json(value))
 
 
 def button_momentary_input_value(value: object) -> ButtonMomentaryInputValue:
     """Parse the value for a button momentary input event."""
 
-    return ButtonMomentaryInputValue.model_validate(thaw_json(value))
+    return ButtonMomentaryInputValue.from_wire(thaw_json(value))
 
 
 def encoder_relative_input_value(value: object) -> EncoderRelativeInputValue:
     """Parse the value for a relative encoder input event."""
 
-    return EncoderRelativeInputValue.model_validate(thaw_json(value))
+    return EncoderRelativeInputValue.from_wire(thaw_json(value))
 
 
 def touch_gesture_input_value(value: object) -> TouchGestureInputValue:
     """Parse the value for a touch gesture input event."""
 
-    return TouchGestureInputValue.model_validate(thaw_json(value))
+    return TouchGestureInputValue.from_wire(thaw_json(value))
 
 
 def raster_bitmap_command_params(
@@ -143,16 +143,16 @@ def raster_bitmap_command_params(
     """Parse params for a raster bitmap command."""
 
     if command_type == "set_frame":
-        return RasterBitmapSetFrameParams.model_validate(thaw_json(params))
+        return RasterBitmapSetFrameParams.from_wire(thaw_json(params))
     if command_type == "clear":
-        return RasterBitmapClearParams.model_validate(thaw_json(params))
+        return RasterBitmapClearParams.from_wire(thaw_json(params))
     raise ValueError(f"unsupported raster bitmap command: {command_type}")
 
 
 def device_power_command_params(params: object) -> DevicePowerCommandParams:
     """Parse params for a device power command."""
 
-    return DevicePowerCommandParams.model_validate(thaw_json(params))
+    return DevicePowerCommandParams.from_wire(thaw_json(params))
 
 
 def _button_value_schema(

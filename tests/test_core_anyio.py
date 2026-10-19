@@ -105,7 +105,9 @@ async def test_coalesced_state_broadcaster_snapshot_coalescing_and_overflow() ->
 @pytest.mark.asyncio
 async def test_coalesced_state_broadcaster_has_no_receive_publish_lost_wakeup() -> None:
     broadcaster = CoalescedStateBroadcaster[str](current=True)
-    async with broadcaster.subscribe(lambda version, current: (version, current)) as sub:
+    async with broadcaster.subscribe(
+        lambda version, current: (version, current)
+    ) as sub:
         await broadcaster.publish(("one",))
         first = await sub.receive()
         assert first.changed == {"one"}
@@ -121,9 +123,13 @@ async def test_coalesced_state_broadcaster_rejects_excess_subscriptions_and_clos
     None
 ):
     broadcaster = CoalescedStateBroadcaster[str](max_subscriptions=1)
-    async with broadcaster.subscribe(lambda version, current: (version, current)) as sub:
+    async with broadcaster.subscribe(
+        lambda version, current: (version, current)
+    ) as sub:
         with pytest.raises(StateSubscriptionLimitExceeded):
-            async with broadcaster.subscribe(lambda version, current: (version, current)):
+            async with broadcaster.subscribe(
+                lambda version, current: (version, current)
+            ):
                 raise AssertionError("excess subscription was admitted")
 
         closed = anyio.Event()

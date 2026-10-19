@@ -166,7 +166,7 @@ async def test_provider_bootstraps_before_advertising_and_authorizes_requests() 
         assert deckr._message_bus.subscriptions[-1].exited  # noqa: SLF001
 
 
-async def test_provider_session_fence_cancels_without_creating_a_token() -> None:
+async def test_provider_session_fence_preserves_other_session_proposal() -> None:
     protocol = _protocol()
     deckr = mock_deckr()
 
@@ -178,7 +178,7 @@ async def test_provider_session_fence_cancels_without_creating_a_token() -> None
             service_endpoint,
             protocol,
             service_id="demo-home",
-        ),
+        ) as provider,
     ):
         agreement = deckr.concord.propose(
             consumer_endpoint,
@@ -189,13 +189,13 @@ async def test_provider_session_fence_cancels_without_creating_a_token() -> None
             ),
         )
         async with agreement:
-            with anyio.fail_after(2):
-                while True:
-                    record = await deckr.concord.contract_record(agreement.contract)
-                    if record is not None and record.state == ContractState.CANCELLED:
-                        break
-                    await anyio.sleep(0)
-            assert record.cancelled_by == SERVICE
+            await provider._participant.notify_policy_changed()
+            await provider._participant._attachments._reconcile_pointer(
+                agreement.contract.pointer
+            )
+            record = await deckr.concord.contract_record(agreement.contract)
+            assert record is not None and record.state is ContractState.OPEN
+            assert record.cancelled_by is None
             token_key = concord_participant_token_key(
                 contract_id=agreement.contract.contract_id,
                 generation=agreement.contract.generation,
@@ -260,7 +260,9 @@ async def test_provider_stale_owner_cleanup_gates_subscription_and_beacon(
 
         entry = await bucket.get(stale.key)
         assert entry is not None
-        assert ContractRecord.model_validate(entry.value).state == ContractState.CANCELLED
+        assert (
+            ContractRecord.model_validate(entry.value).state == ContractState.CANCELLED
+        )
 
 
 async def test_provider_failed_advertisement_closes_participant_and_subscription(
@@ -348,7 +350,9 @@ async def test_provider_requests_publish_typed_authorization_outcomes() -> None:
             authorized = await anext(stream)
             assert authorized.authorization is not None
             assert authorized.failure is None
-            assert authorized.authorization.contract.pointer == agreement.contract.pointer
+            assert (
+                authorized.authorization.contract.pointer == agreement.contract.pointer
+            )
 
             await subscription._send.send(  # noqa: SLF001
                 _request(agreement, sender_session_id="wrong-session")

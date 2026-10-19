@@ -146,7 +146,9 @@ def test_core_action_bodies_forbid_stale_routing_identity_fields() -> None:
             BINDING_OUTPUT,
             {
                 "contextId": "ctx",
-                "binding": _binding_metadata().model_dump(by_alias=True, exclude_none=True, mode="json"),
+                "binding": _binding_metadata().model_dump(
+                    by_alias=True, exclude_none=True, mode="json"
+                ),
                 "capability": {"controlId": "0,0", "capabilityId": "raster.bitmap"},
                 "commandType": "clear",
                 "generation": 1,
@@ -154,7 +156,9 @@ def test_core_action_bodies_forbid_stale_routing_identity_fields() -> None:
         )
 
 
-def test_action_descriptor_carries_capability_requirements_and_settings_schema() -> None:
+def test_action_descriptor_carries_capability_requirements_and_settings_schema() -> (
+    None
+):
     descriptor = ActionDescriptor(
         actionId="demo.pager",
         name="Pager",
@@ -174,7 +178,10 @@ def test_action_descriptor_carries_capability_requirements_and_settings_schema()
             )
         ],
         settingsSchema={"type": "object", "properties": {"title": {"type": "string"}}},
-        providerSettingsSchema={"type": "object", "properties": {"token": {"type": "string"}}},
+        providerSettingsSchema={
+            "type": "object",
+            "properties": {"token": {"type": "string"}},
+        },
     )
 
     assert descriptor.to_dict()["requirements"][0]["preferences"] == [
@@ -189,9 +196,9 @@ def test_action_descriptor_carries_capability_requirements_and_settings_schema()
     assert descriptor.to_dict()["settingsSchema"]["properties"]["title"]["type"] == (
         "string"
     )
-    assert descriptor.to_dict()["providerSettingsSchema"]["properties"]["token"]["type"] == (
-        "string"
-    )
+    assert descriptor.to_dict()["providerSettingsSchema"]["properties"]["token"][
+        "type"
+    ] == ("string")
 
 
 def test_action_availability_entries_validate_descriptor_identity() -> None:
@@ -593,7 +600,9 @@ def test_v1_binding_output_body_targets_matched_capability() -> None:
     body = action_body_for_type(
         BINDING_OUTPUT,
         {
-            "binding": _binding_metadata().model_dump(by_alias=True, exclude_none=True, mode="json"),
+            "binding": _binding_metadata().model_dump(
+                by_alias=True, exclude_none=True, mode="json"
+            ),
             "capability": {
                 "deviceRef": {"managerId": "manager-1", "deviceId": "device-1"},
                 "controlId": "0,0",

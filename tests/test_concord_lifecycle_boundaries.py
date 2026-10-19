@@ -90,7 +90,7 @@ _APPROVED_MANAGED_CANCEL_CALLS: Counter[_CallSite] = Counter(
             "cancel",
         ): 1,
         (
-            Path("src/deckr/hardware/runtime.py"),
+            Path("src/deckr/hardware/manager.py"),
             "HardwareManagerRuntime._cancel_claims_for_device",
             "self._claim_manager",
             "cancel",
@@ -105,15 +105,10 @@ def test_production_code_uses_managed_lifecycle_routes() -> None:
     production_files = _production_python_files(repository)
     for path in production_files:
         relative = path.relative_to(repository)
-        if relative in {
-            Path("src/deckr/beacon.py"),
-            Path("src/deckr/_concord/_agreement.py"),
-            Path("src/deckr/_concord/_lease.py"),
-            Path("src/deckr/_concord/_maintenance.py"),
-                Path("src/deckr/_concord/_participant.py"),
-                Path("src/deckr/_concord/_store.py"),
-                Path("src/deckr/_concord/_view.py"),
-            Path("src/deckr/concord.py"),
+        # Raw protocol operations belong only inside the generic implementations.
+        if relative.parts[:3] in {
+            ("src", "deckr", "_beacon"),
+            ("src", "deckr", "_concord"),
         }:
             continue
         tree = ast.parse(path.read_text(), filename=str(path))
@@ -228,13 +223,10 @@ def test_production_does_not_import_deckr_testing() -> None:
         tree = ast.parse(path.read_text(), filename=str(path))
         for node in ast.walk(tree):
             if (
-                isinstance(node, ast.ImportFrom)
-                and node.module == "deckr.testing"
+                isinstance(node, ast.ImportFrom) and node.module == "deckr.testing"
             ) or (
                 isinstance(node, ast.Import)
-                and any(
-                    alias.name.startswith("deckr.testing") for alias in node.names
-                )
+                and any(alias.name.startswith("deckr.testing") for alias in node.names)
             ):
                 offenders.append(f"{relative}:{node.lineno}")
     assert not offenders, "production imports deckr.testing: " + ", ".join(offenders)
@@ -294,11 +286,7 @@ def _exception_type_names(node: ast.AST | None) -> set[str]:
     if node is None:
         return set()
     if isinstance(node, ast.Tuple):
-        return {
-            name
-            for item in node.elts
-            for name in _exception_type_names(item)
-        }
+        return {name for item in node.elts for name in _exception_type_names(item)}
     name = _receiver_name(node)
     return {name.rsplit(".", 1)[-1]} if name else set()
 
@@ -370,8 +358,7 @@ def _lifecycle_constructor_name(node: ast.Call) -> str | None:
 
 def _is_lifecycle_receiver(receiver: str, lifecycle: str) -> bool:
     return any(
-        component.lstrip("_").lower() == lifecycle
-        for component in receiver.split(".")
+        component.lstrip("_").lower() == lifecycle for component in receiver.split(".")
     )
 
 

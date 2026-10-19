@@ -272,7 +272,10 @@ def mirabox_compound_dial_touch_surface() -> dict[str, Any]:
                 "groupId": "content-grid",
                 "surfaceId": "main-display",
                 "geometry": {"x": 0, "y": 0, "width": 1, "height": 1, "unit": "grid"},
-                "inputCapabilities": [_momentary_capability(), _activation_capability()],
+                "inputCapabilities": [
+                    _momentary_capability(),
+                    _activation_capability(),
+                ],
                 "outputCapabilities": [_raster_capability(96, 96)],
             },
             {
@@ -295,7 +298,9 @@ def mirabox_compound_dial_touch_surface() -> dict[str, Any]:
                         },
                     ),
                 ],
-                "outputCapabilities": [_raster_capability(240, 240, capability_id="dial.raster")],
+                "outputCapabilities": [
+                    _raster_capability(240, 240, capability_id="dial.raster")
+                ],
             },
             {
                 "controlId": "touch.0",
@@ -304,7 +309,13 @@ def mirabox_compound_dial_touch_surface() -> dict[str, Any]:
                 "relatedControlIds": ["dial.0"],
                 "groupId": "dial-strip",
                 "surfaceId": "dial-strip",
-                "geometry": {"x": 0, "y": 2, "width": 1, "height": 0.25, "unit": "grid"},
+                "geometry": {
+                    "x": 0,
+                    "y": 2,
+                    "width": 1,
+                    "height": 0.25,
+                    "unit": "grid",
+                },
                 "inputCapabilities": [_touch_capability()],
             },
             {
@@ -379,7 +390,13 @@ def touch_surface_with_tap_and_swipe() -> dict[str, Any]:
             {
                 "controlId": "touch.main",
                 "kind": "touch_surface",
-                "geometry": {"x": 0, "y": 0, "width": 1, "height": 1, "unit": "normalized"},
+                "geometry": {
+                    "x": 0,
+                    "y": 0,
+                    "width": 1,
+                    "height": 1,
+                    "unit": "normalized",
+                },
                 "inputCapabilities": [_touch_capability()],
             }
         ],

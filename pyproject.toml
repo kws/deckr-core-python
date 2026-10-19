@@ -101,6 +101,9 @@ ignore = [
     "SIM105",
 ]
 
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
 [tool.pytest.ini_options]
 addopts = [
     "--cov=deckr",

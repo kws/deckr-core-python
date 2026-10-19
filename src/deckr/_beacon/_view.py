@@ -7,17 +7,14 @@ from typing import Any, Generic, TypeVar
 
 import anyio
 
-from deckr.core.util.anyio import (
-    CoalescedStateBroadcaster,
-    CoalescedStateSubscription,
-)
-from deckr.substrates.nats_kv import (
+from deckr.core.kv import (
     KvEntry,
     KvMaterializedChange,
     KvMaterializedSnapshot,
     KvUnavailable,
-    NatsKvMaterializedBucket,
 )
+from deckr.core.kv_source import KvMaterializedSource
+from deckr.core.util.anyio import CoalescedStateBroadcaster, CoalescedStateSubscription
 
 CandidateT = TypeVar("CandidateT")
 
@@ -34,7 +31,7 @@ class BeaconView(Generic[CandidateT]):
 
     def __init__(
         self,
-        source: NatsKvMaterializedBucket,
+        source: KvMaterializedSource,
         *,
         parse_entry: Callable[[KvEntry], tuple[CandidateT | None, str]],
         candidate_key: Callable[[CandidateT], str],
@@ -144,7 +141,9 @@ class BeaconView(Generic[CandidateT]):
         keys_by_feature: dict[str, set[str]] = {}
         keys_by_endpoint: dict[tuple[str, str, str], set[str]] = {}
         for key, candidate in entries_by_key.items():
-            keys_by_feature.setdefault(self._candidate_feature(candidate), set()).add(key)
+            keys_by_feature.setdefault(self._candidate_feature(candidate), set()).add(
+                key
+            )
             keys_by_endpoint.setdefault(
                 self._candidate_endpoint_key(candidate), set()
             ).add(key)
@@ -299,9 +298,7 @@ class BeaconView(Generic[CandidateT]):
     async def subscribe(
         self,
         feature_id: str | None = None,
-    ) -> AsyncIterator[
-        CoalescedStateSubscription[str, BeaconViewSnapshot[CandidateT]]
-    ]:
+    ) -> AsyncIterator[CoalescedStateSubscription[str, BeaconViewSnapshot[CandidateT]]]:
         async with self._broadcaster.subscribe(
             lambda version, current: self._snapshot_locked(
                 feature_id,

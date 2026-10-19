@@ -7,13 +7,7 @@ from typing import Any
 import anyio
 
 from deckr.contracts.models import DeckrModel
-from deckr.substrates.nats_kv import (
-    KvChange,
-    KvConflict,
-    KvEntry,
-    KvWatchBarrier,
-    kv_value,
-)
+from deckr.core.kv import KvChange, KvConflict, KvEntry, KvWatchBarrier, kv_value
 
 
 class MemoryJsonKvBucket:
@@ -253,9 +247,7 @@ class MemoryJsonKvBucket:
     async def watch(
         self,
         prefix: str = "",
-    ) -> AsyncIterator[
-        anyio.abc.ObjectReceiveStream[KvChange | KvWatchBarrier]
-    ]:
+    ) -> AsyncIterator[anyio.abc.ObjectReceiveStream[KvChange | KvWatchBarrier]]:
         send, receive = anyio.create_memory_object_stream[KvChange | KvWatchBarrier](
             max_buffer_size=self._buffer_size
         )
@@ -306,18 +298,16 @@ class MemoryJsonKvBucket:
     def _watchers_for(
         self,
         key: str,
-    ) -> tuple[
-        anyio.abc.ObjectSendStream[KvChange | KvWatchBarrier], ...
-    ]:
+    ) -> tuple[anyio.abc.ObjectSendStream[KvChange | KvWatchBarrier], ...]:
         return tuple(
-            stream for stream, prefix in self._watchers.items() if key.startswith(prefix)
+            stream
+            for stream, prefix in self._watchers.items()
+            if key.startswith(prefix)
         )
 
     async def _publish(
         self,
-        watchers: tuple[
-            anyio.abc.ObjectSendStream[KvChange | KvWatchBarrier], ...
-        ],
+        watchers: tuple[anyio.abc.ObjectSendStream[KvChange | KvWatchBarrier], ...],
         change: KvChange,
     ) -> None:
         for watcher in watchers:

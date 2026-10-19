@@ -7,17 +7,11 @@ from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import Annotated, Any, Literal
 
-from pydantic import (
-    ConfigDict,
-    Field,
-    RootModel,
-    field_serializer,
-    field_validator,
-    model_validator,
-)
+from pydantic import Field, field_serializer, field_validator, model_validator
 
 from deckr.contracts.authority import ContractPointer
 from deckr.contracts.models import DeckrModel, JsonObject, freeze_json, thaw_json
+from deckr.core.identity import EndpointAddress as ProtocolEndpointAddress
 
 HARDWARE_MESSAGES_LANE = "hardware_messages"
 ACTIONS_LANE = "actions"
@@ -103,46 +97,19 @@ def _now_utc() -> datetime:
     return datetime.now(UTC)
 
 
-class EndpointAddress(RootModel[str]):
-    """A typed Deckr endpoint address serialized as ``<family>:<endpoint_id>``."""
-
-    model_config = ConfigDict(frozen=True)
+class EndpointAddress(ProtocolEndpointAddress):
+    """Endpoint address with Deckr family and provider-identity policies."""
 
     @field_validator("root")
     @classmethod
-    def _validate_root(cls, value: str) -> str:
-        if not isinstance(value, str):
-            raise TypeError("Endpoint address must be a string")
-        if value.strip() != value:
-            raise ValueError(
-                "Endpoint address must not contain leading or trailing whitespace"
-            )
-        family, sep, endpoint_id = value.partition(":")
-        if not sep:
-            raise ValueError(
-                "Endpoint address must have shape '<endpoint_family>:<endpoint_id>'"
-            )
+    def _validate_deckr_policy(cls, value: str) -> str:
+        family, endpoint_id = value.split(":", 1)
         _require_endpoint_family(family, field_name="Endpoint family")
-        _require_identity_part(endpoint_id, field_name="Endpoint id")
-        if ":" in endpoint_id:
-            raise ValueError("Endpoint id must not contain ':'")
         if family == "action_provider":
             _require_action_provider_endpoint_id(
-                endpoint_id,
-                field_name="Action provider instance id",
+                endpoint_id, field_name="Action provider instance id"
             )
         return value
-
-    @property
-    def family(self) -> str:
-        return self.root.split(":", 1)[0]
-
-    @property
-    def endpoint_id(self) -> str:
-        return self.root.split(":", 1)[1]
-
-    def __str__(self) -> str:
-        return self.root
 
 
 def endpoint_address(endpoint_family: str, endpoint_id: str) -> EndpointAddress:
@@ -165,7 +132,7 @@ def parse_endpoint_address(address: str | EndpointAddress) -> EndpointAddress:
     return (
         address
         if isinstance(address, EndpointAddress)
-        else EndpointAddress.model_validate(address)
+        else EndpointAddress.model_validate(str(address))
     )
 
 
@@ -388,7 +355,7 @@ class DeckrMessage(DeckrModel):
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> DeckrMessage:
-        return cls.model_validate(dict(data))
+        return cls.from_wire(data)
 
     @classmethod
     def schema_dict(cls) -> dict[str, Any]:

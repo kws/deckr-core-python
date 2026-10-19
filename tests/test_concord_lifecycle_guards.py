@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -9,7 +10,6 @@ from unittest.mock import AsyncMock
 import anyio
 import pytest
 
-from deckr._concord import _agreement as agreement_module
 from deckr._concord import _participant as participant_module
 from deckr._concord._lease import (
     ConcordParticipantLease,
@@ -27,6 +27,7 @@ from deckr.concord import (
     ConcordUnavailable,
     ConcordUnavailableCode,
     ContractState,
+    ContractValidityStatus,
     concord_participant_token_key,
 )
 from deckr.contracts.authority import ContractPointer
@@ -100,9 +101,7 @@ def test_agreement_intent_rejects_invalid_identity_and_session_shapes() -> None:
 
     pointer = ContractPointer(contractId="predecessor", generation=1)
     assert _spec(supersedes=pointer).supersedes is pointer
-    assert (
-        _spec(supersedes=pointer.model_dump(by_alias=True)).supersedes == pointer
-    )
+    assert _spec(supersedes=pointer.model_dump(by_alias=True)).supersedes == pointer
     assert _spec(created_by=CONTROLLER).created_by == CONTROLLER
 
 
@@ -296,7 +295,7 @@ async def test_agreement_public_subscribers_close_and_heartbeat_fail_closed(
 async def test_agreement_cleanup_retry_classifies_conflicts_and_withdrawal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(agreement_module.random, "uniform", lambda _low, _high: 0)
+    monkeypatch.setattr(random, "uniform", lambda _low, _high: 0)
     async with _running_concord() as concord:
         agreement = concord.propose(
             _Endpoint(CONTROLLER, "controller-session"),
@@ -440,39 +439,39 @@ async def test_participant_selector_heartbeat_and_closed_state_guards(
                 reason=None,
             ),
         )
-        participant._leases[key] = fake_lease  # type: ignore[assignment]  # noqa: SLF001
-        monkeypatch.setattr(participant, "_cancel_or_retain", AsyncMock())
-        await participant._heartbeat(key, fake_lease)  # type: ignore[arg-type]  # noqa: SLF001
+        participant._resources.leases[key] = fake_lease  # type: ignore[assignment]  # noqa: SLF001
+        monkeypatch.setattr(participant._attachments, "_cancel_or_retain", AsyncMock())
+        await participant._attachments._heartbeat(key, fake_lease)  # type: ignore[arg-type]  # noqa: SLF001
         assert participant.state.phase == ConcordLifecyclePhase.UNAVAILABLE
 
         fake_lease.state = SimpleNamespace(  # type: ignore[misc]
             phase=ConcordParticipantLeasePhase.TERMINAL,
             reason="token lost",
         )
-        participant._leases[key] = fake_lease  # type: ignore[assignment]  # noqa: SLF001
+        participant._resources.leases[key] = fake_lease  # type: ignore[assignment]  # noqa: SLF001
         relinquish = AsyncMock()
         drop = AsyncMock()
         publish = AsyncMock()
         original_publish = participant._publish  # noqa: SLF001
-        monkeypatch.setattr(participant, "_relinquish_pointer", relinquish)
-        monkeypatch.setattr(participant, "_drop_pointer", drop)
-        monkeypatch.setattr(participant, "_publish", publish)
-        await participant._heartbeat(key, fake_lease)  # type: ignore[arg-type]  # noqa: SLF001
+        monkeypatch.setattr(participant._attachments, "_relinquish_pointer", relinquish)
+        monkeypatch.setattr(participant._attachments, "_drop_pointer", drop)
+        monkeypatch.setattr(participant._attachments, "_publish", publish)
+        await participant._attachments._heartbeat(key, fake_lease)  # type: ignore[arg-type]  # noqa: SLF001
         relinquish.assert_any_await(key)
         drop.assert_any_await(key)
 
         # A heartbeat that finishes after its pointer is replaced is inert.
-        participant._leases.pop(key, None)  # noqa: SLF001
-        await participant._heartbeat(key, fake_lease)  # type: ignore[arg-type]  # noqa: SLF001
+        participant._resources.leases.pop(key, None)  # noqa: SLF001
+        await participant._attachments._heartbeat(key, fake_lease)  # type: ignore[arg-type]  # noqa: SLF001
         fake_lease.state = SimpleNamespace(  # type: ignore[misc]
             phase=ConcordParticipantLeasePhase.ACTIVE,
             reason=None,
         )
-        participant._leases[key] = fake_lease  # type: ignore[assignment]  # noqa: SLF001
-        await participant._heartbeat(key, fake_lease)  # type: ignore[arg-type]  # noqa: SLF001
-        participant._leases.pop(key, None)  # noqa: SLF001
+        participant._resources.leases[key] = fake_lease  # type: ignore[assignment]  # noqa: SLF001
+        await participant._attachments._heartbeat(key, fake_lease)  # type: ignore[arg-type]  # noqa: SLF001
+        participant._resources.leases.pop(key, None)  # noqa: SLF001
 
-        monkeypatch.setattr(participant, "_publish", original_publish)
+        monkeypatch.setattr(participant._attachments, "_publish", original_publish)
         await participant.aclose()
         await participant.aclose()
         await participant._publish(  # noqa: SLF001
@@ -487,7 +486,7 @@ async def test_participant_selector_heartbeat_and_closed_state_guards(
 async def test_participant_cleanup_retry_retains_every_partial_operation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(participant_module.random, "uniform", lambda _low, _high: 0)
+    monkeypatch.setattr(random, "uniform", lambda _low, _high: 0)
     async with _running_concord() as concord:
         participant = concord.participant(
             _Endpoint(MANAGER, "manager-session"),
@@ -501,8 +500,8 @@ async def test_participant_cleanup_retry_retains_every_partial_operation(
         pointer = contract.pointer
 
         # A stale retry registration with no retained contract is harmless.
-        participant._cleanup_running.add(pointer)  # noqa: SLF001
-        await participant._cleanup_retry_loop(pointer, "missing")  # noqa: SLF001
+        participant._resources.cleanup_running.add(pointer)  # noqa: SLF001
+        await participant._attachments._cleanup_retry_loop(pointer, "missing")  # noqa: SLF001
 
         class _RetainedLease:
             def __init__(self) -> None:
@@ -518,10 +517,10 @@ async def test_participant_cleanup_retry_retains_every_partial_operation(
                 self.aclose = AsyncMock()
 
         retained = _RetainedLease()
-        participant._cleanup_contracts[pointer] = contract  # noqa: SLF001
-        participant._cleanup_leases[pointer] = retained  # type: ignore[assignment]  # noqa: SLF001
-        participant._cleanup_running.add(pointer)  # noqa: SLF001
-        participant._store = SimpleNamespace(  # noqa: SLF001
+        participant._resources.cleanup_contracts[pointer] = contract  # noqa: SLF001
+        participant._resources.cleanup_leases[pointer] = retained  # type: ignore[assignment]  # noqa: SLF001
+        participant._resources.cleanup_running.add(pointer)  # noqa: SLF001
+        participant._attachments._store = SimpleNamespace(  # noqa: SLF001
             cancel=AsyncMock(
                 side_effect=[
                     True,
@@ -541,15 +540,15 @@ async def test_participant_cleanup_retry_retains_every_partial_operation(
             async def wait(self) -> None:
                 await anyio.lowlevel.checkpoint()
 
-        participant._cleanup_wakeups[pointer] = _WakeDuringWait()  # type: ignore[assignment]  # noqa: SLF001
-        await participant._cleanup_retry_loop(pointer, "retry")  # noqa: SLF001
+        participant._resources.cleanup_wakeups[pointer] = _WakeDuringWait()  # type: ignore[assignment]  # noqa: SLF001
+        await participant._attachments._cleanup_retry_loop(pointer, "retry")  # noqa: SLF001
         assert retained.withdraw_retained.await_count == 2
         retained.aclose.assert_awaited_once_with(withdraw=False)
-        assert pointer not in participant._cleanup_contracts  # noqa: SLF001
+        assert pointer not in participant._resources.cleanup_contracts  # noqa: SLF001
 
-        participant._cleanup_contracts[pointer] = contract  # noqa: SLF001
-        participant._cleanup_running.add(pointer)  # noqa: SLF001
-        participant._store = SimpleNamespace(  # noqa: SLF001
+        participant._resources.cleanup_contracts[pointer] = contract  # noqa: SLF001
+        participant._resources.cleanup_running.add(pointer)  # noqa: SLF001
+        participant._attachments._store = SimpleNamespace(  # noqa: SLF001
             cancel=AsyncMock(
                 side_effect=ConcordConflict(
                     ConcordConflictCode.CONTRACT_CANCELLED,
@@ -558,14 +557,17 @@ async def test_participant_cleanup_retry_retains_every_partial_operation(
                 )
             )
         )
-        await participant._cleanup_retry_loop(pointer, "terminal")  # noqa: SLF001
-        assert participant._failures[pointer][0] == ConcordLifecyclePhase.TERMINAL  # noqa: SLF001
+        await participant._attachments._cleanup_retry_loop(pointer, "terminal")  # noqa: SLF001
+        assert (
+            participant._resources.failures[pointer][0]
+            == ConcordLifecyclePhase.TERMINAL
+        )  # noqa: SLF001
 
-        participant._cleanup_contracts[pointer] = contract  # noqa: SLF001
-        participant._cleanup_running.add(pointer)  # noqa: SLF001
-        participant._cleanup_wakeups[pointer] = anyio.Event()  # noqa: SLF001
-        participant._cleanup_wakeups[pointer].set()  # noqa: SLF001
-        participant._store = SimpleNamespace(  # noqa: SLF001
+        participant._resources.cleanup_contracts[pointer] = contract  # noqa: SLF001
+        participant._resources.cleanup_running.add(pointer)  # noqa: SLF001
+        participant._resources.cleanup_wakeups[pointer] = anyio.Event()  # noqa: SLF001
+        participant._resources.cleanup_wakeups[pointer].set()  # noqa: SLF001
+        participant._attachments._store = SimpleNamespace(  # noqa: SLF001
             cancel=AsyncMock(
                 side_effect=[
                     ConcordConflict(
@@ -577,12 +579,12 @@ async def test_participant_cleanup_retry_retains_every_partial_operation(
                 ]
             )
         )
-        await participant._cleanup_retry_loop(pointer, "revision-race")  # noqa: SLF001
+        await participant._attachments._cleanup_retry_loop(pointer, "revision-race")  # noqa: SLF001
 
-        participant._cleanup_contracts[pointer] = contract  # noqa: SLF001
-        participant._cleanup_running.add(pointer)  # noqa: SLF001
-        participant._cleanup_wakeups[pointer] = anyio.Event()  # noqa: SLF001
-        participant._store = SimpleNamespace(  # noqa: SLF001
+        participant._resources.cleanup_contracts[pointer] = contract  # noqa: SLF001
+        participant._resources.cleanup_running.add(pointer)  # noqa: SLF001
+        participant._resources.cleanup_wakeups[pointer] = anyio.Event()  # noqa: SLF001
+        participant._attachments._store = SimpleNamespace(  # noqa: SLF001
             cancel=AsyncMock(
                 side_effect=[
                     ConcordUnavailable(
@@ -593,20 +595,20 @@ async def test_participant_cleanup_retry_retains_every_partial_operation(
                 ]
             )
         )
-        await participant._cleanup_retry_loop(pointer, "timeout-retry")  # noqa: SLF001
+        await participant._attachments._cleanup_retry_loop(pointer, "timeout-retry")  # noqa: SLF001
 
         class _ReplaceOnCheck:
             def is_set(self) -> bool:
-                participant._cleanup_wakeups[pointer] = anyio.Event()  # noqa: SLF001
+                participant._resources.cleanup_wakeups[pointer] = anyio.Event()  # noqa: SLF001
                 return True
 
             async def wait(self) -> None:
                 return None
 
-        participant._cleanup_contracts[pointer] = contract  # noqa: SLF001
-        participant._cleanup_running.add(pointer)  # noqa: SLF001
-        participant._cleanup_wakeups[pointer] = _ReplaceOnCheck()  # type: ignore[assignment]  # noqa: SLF001
-        participant._store = SimpleNamespace(  # noqa: SLF001
+        participant._resources.cleanup_contracts[pointer] = contract  # noqa: SLF001
+        participant._resources.cleanup_running.add(pointer)  # noqa: SLF001
+        participant._resources.cleanup_wakeups[pointer] = _ReplaceOnCheck()  # type: ignore[assignment]  # noqa: SLF001
+        participant._attachments._store = SimpleNamespace(  # noqa: SLF001
             cancel=AsyncMock(
                 side_effect=[
                     ConcordConflict(
@@ -618,11 +620,11 @@ async def test_participant_cleanup_retry_retains_every_partial_operation(
                 ]
             )
         )
-        await participant._cleanup_retry_loop(pointer, "replaced-wakeup")  # noqa: SLF001
+        await participant._attachments._cleanup_retry_loop(pointer, "replaced-wakeup")  # noqa: SLF001
 
-        participant._closed = True  # noqa: SLF001
-        await participant._cleanup_retry_loop(pointer, "closed")  # noqa: SLF001
-        participant._closed = False  # noqa: SLF001
+        participant._resources.closed = True  # noqa: SLF001
+        await participant._attachments._cleanup_retry_loop(pointer, "closed")  # noqa: SLF001
+        participant._resources.closed = False  # noqa: SLF001
         await participant.aclose()
 
 
@@ -649,29 +651,29 @@ async def test_participant_pointer_reconciliation_handles_disappearing_views(
         drop = AsyncMock()
 
         with monkeypatch.context() as patch:
-            patch.setattr(participant, "_drop_pointer", drop)
+            patch.setattr(participant._attachments, "_drop_pointer", drop)
             patch.setattr(participant._view, "get_contract", lambda _pointer: None)  # noqa: SLF001
-            await participant._reconcile_pointer(pointer)  # noqa: SLF001
+            await participant._attachments._reconcile_pointer(pointer)  # noqa: SLF001
         drop.assert_awaited_once_with(contract.key)
 
         drop.reset_mock()
         with monkeypatch.context() as patch:
-            patch.setattr(participant, "_drop_pointer", drop)
+            patch.setattr(participant._attachments, "_drop_pointer", drop)
             patch.setattr(
                 participant._view,  # noqa: SLF001
                 "get_contract",
                 lambda _pointer: contract,
             )
             patch.setattr(participant._view, "record", lambda _contract: None)  # noqa: SLF001
-            await participant._reconcile_pointer(pointer)  # noqa: SLF001
+            await participant._attachments._reconcile_pointer(pointer)  # noqa: SLF001
         drop.assert_awaited_once_with(contract.key)
 
-        participant._selected = frozenset((pointer,))  # noqa: SLF001
+        participant._resources.selected = frozenset((pointer,))  # noqa: SLF001
         publish = AsyncMock()
         cancel = AsyncMock()
         with monkeypatch.context() as patch:
-            patch.setattr(participant, "_publish", publish)
-            patch.setattr(participant, "_cancel_or_retain", cancel)
+            patch.setattr(participant._attachments, "_publish", publish)
+            patch.setattr(participant._attachments, "_cancel_or_retain", cancel)
             patch.setattr(
                 participant._view,  # noqa: SLF001
                 "get_contract",
@@ -688,14 +690,14 @@ async def test_participant_pointer_reconciliation_handles_disappearing_views(
                 participant._view,  # noqa: SLF001
                 "validate",
                 lambda *_args, **_kwargs: SimpleNamespace(
-                    status=participant_module.ContractValidityStatus.UNAVAILABLE,
+                    status=ContractValidityStatus.UNAVAILABLE,
                     reason="view stale",
                     tokens={},
                 ),
             )
-            await participant._reconcile_pointer(pointer)  # noqa: SLF001
-        publish.assert_awaited()
-        cancel.assert_awaited_once()
+            await participant._attachments._reconcile_pointer(pointer)  # noqa: SLF001
+        publish.assert_not_awaited()
+        cancel.assert_not_awaited()
         await participant.aclose()
 
 
@@ -710,7 +712,7 @@ async def test_lease_guards_callbacks_and_idempotent_close() -> None:
             created_by=CONTROLLER,
         )
         lease = ConcordParticipantLease(
-            concord._coordinator,  # noqa: SLF001
+            concord._repository,  # noqa: SLF001
             concord._view,  # noqa: SLF001
             contract=contract,
             participant=CONTROLLER,
@@ -739,7 +741,7 @@ async def test_lease_guards_callbacks_and_idempotent_close() -> None:
             async_states.append(state)
 
         identity_only = ConcordParticipantLease(
-            concord._coordinator,  # noqa: SLF001
+            concord._repository,  # noqa: SLF001
             concord._view,  # noqa: SLF001
             contract=contract,
             participant=MANAGER,
@@ -768,7 +770,7 @@ async def test_lease_guards_callbacks_and_idempotent_close() -> None:
         assert identity_only.state is previous
 
         partial = ConcordParticipantLease(
-            concord._coordinator,  # noqa: SLF001
+            concord._repository,  # noqa: SLF001
             concord._view,  # noqa: SLF001
             contract=contract,
             participant=MANAGER,
@@ -780,7 +782,7 @@ async def test_lease_guards_callbacks_and_idempotent_close() -> None:
         assert partial_error.value.code == ConcordConflictCode.REVISION_CHANGED
 
         inactive = ConcordParticipantLease(
-            concord._coordinator,  # noqa: SLF001
+            concord._repository,  # noqa: SLF001
             concord._view,  # noqa: SLF001
             contract=contract,
             participant=MANAGER,
@@ -807,7 +809,7 @@ async def test_heartbeat_rechecks_authority_after_sleep(monkeypatch) -> None:
             created_by=CONTROLLER,
         )
         lease = ConcordParticipantLease(
-            concord._coordinator,  # noqa: SLF001
+            concord._repository,  # noqa: SLF001
             concord._view,  # noqa: SLF001
             contract=contract,
             participant=CONTROLLER,
@@ -850,10 +852,13 @@ async def test_owner_bootstrap_revision_retry_and_terminal_conflict() -> None:
 
 @pytest.mark.asyncio
 async def test_materialized_view_staleness_immediately_revokes_agreement() -> None:
-    async with _running_concord() as concord, concord.propose(
-        _Endpoint(CONTROLLER, "controller-session"),
-        _spec(),
-    ) as agreement:
+    async with (
+        _running_concord() as concord,
+        concord.propose(
+            _Endpoint(CONTROLLER, "controller-session"),
+            _spec(),
+        ) as agreement,
+    ):
         await concord._attach(  # noqa: SLF001
             agreement.contract,
             MANAGER,
@@ -874,11 +879,16 @@ async def test_materialized_view_staleness_immediately_revokes_agreement() -> No
 
 
 @pytest.mark.asyncio
-async def test_participant_rejects_frozen_session_before_token_creation() -> None:
-    async with _running_concord() as concord, concord.participant(
-        _Endpoint(MANAGER, "current-manager-session"),
-        ConcordParticipantPolicy(profile=PROFILE, select=_accept_all),
-    ) as participant:
+async def test_participant_preserves_other_session_proposal_without_creating_token() -> (
+    None
+):
+    async with (
+        _running_concord() as concord,
+        concord.participant(
+            _Endpoint(MANAGER, "current-manager-session"),
+            ConcordParticipantPolicy(profile=PROFILE, select=_accept_all),
+        ) as participant,
+    ):
         contract = await concord._create_contract(  # noqa: SLF001
             (CONTROLLER, MANAGER),
             profile=PROFILE,
@@ -894,19 +904,17 @@ async def test_participant_rejects_frozen_session_before_token_creation() -> Non
             "controller-session",
             token_id="controller-token",
         )
-        with anyio.fail_after(2):
-            while True:
-                record = await concord.contract_record(contract)
-                if record is not None and record.state == ContractState.CANCELLED:
-                    break
-                await anyio.sleep(0)
+        await participant.notify_policy_changed()
+        await participant._attachments._reconcile_pointer(contract.pointer)
+        record = await concord.contract_record(contract)
+        assert record is not None and record.state is ContractState.OPEN
         token_key = concord_participant_token_key(
             contract_id=contract.contract_id,
             generation=contract.generation,
             participant=MANAGER,
         )
         assert (  # noqa: SLF001
-            await concord._coordinator.token_exact.get_exact(token_key) is None
+            await concord._repository.token_exact.get_exact(token_key) is None
         )
         assert participant.managed_contracts == ()
 
@@ -928,13 +936,14 @@ async def test_initial_selector_failure_cleans_up_failed_participant_entry() -> 
 
 
 @pytest.mark.asyncio
-async def test_materialized_view_staleness_revokes_participant_before_cleanup() -> (
-    None
-):
-    async with _running_concord() as concord, concord.participant(
-        _Endpoint(MANAGER, "manager-session"),
-        ConcordParticipantPolicy(profile=PROFILE, select=_accept_all),
-    ) as participant:
+async def test_materialized_view_staleness_revokes_participant_before_cleanup() -> None:
+    async with (
+        _running_concord() as concord,
+        concord.participant(
+            _Endpoint(MANAGER, "manager-session"),
+            ConcordParticipantPolicy(profile=PROFILE, select=_accept_all),
+        ) as participant,
+    ):
         contract = await concord._create_contract(  # noqa: SLF001
             (CONTROLLER, MANAGER),
             profile=PROFILE,
@@ -952,8 +961,7 @@ async def test_materialized_view_staleness_revokes_participant_before_cleanup() 
         )
         await participant.wait_for_state(
             lambda state: any(
-                item.contract.pointer == contract.pointer
-                and item.local_authority
+                item.contract.pointer == contract.pointer and item.local_authority
                 for item in state.contracts
             ),
             timeout_seconds=2,
@@ -996,3 +1004,90 @@ def test_participant_policy_requires_valid_profile_and_selector() -> None:
         ConcordParticipantPolicy(profile="", select=_accept_all)
     with pytest.raises(TypeError, match="callable"):
         ConcordParticipantPolicy(profile=PROFILE, select=None)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_exact_read_failure_revokes_a_current_agreement():
+    tokens = LifecycleFaultHarness(bucket="tokens", ttl_seconds=60)
+    async with (
+        _running_concord(tokens=tokens) as concord,
+        concord.propose(
+            _Endpoint(CONTROLLER, "session"),
+            _spec(participants=(CONTROLLER,), participant_sessions={}),
+        ) as agreement,
+    ):
+        await agreement.wait_for_state(lambda state: state.valid)
+        tokens.fail_next("get_exact", phase=LifecycleFaultPhase.BEFORE)
+        await agreement._refresh_from_view(exact=True)
+        assert not agreement.state.local_authority
+        assert agreement._lease.token is None
+
+
+@pytest.mark.asyncio
+async def test_local_lease_revocation_cancels_even_with_live_shared_token():
+    async with (
+        _running_concord() as concord,
+        concord.propose(
+            _Endpoint(CONTROLLER, "session"),
+            _spec(participants=(CONTROLLER,), participant_sessions={}),
+        ) as agreement,
+    ):
+        await agreement.wait_for_state(lambda state: state.valid)
+        agreement._lease.relinquish_local_authority()
+        await agreement._lose_authority(
+            ConcordLifecyclePhase.TERMINAL, "local owner stopped"
+        )
+        assert not agreement.state.local_authority
+        assert (
+            await concord.contract_record(agreement.contract)
+        ).state is ContractState.CANCELLED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["agreement", "participant"])
+async def test_close_wins_when_initial_readiness_returns_after_cancellation(
+    monkeypatch, kind
+):
+    async with _running_concord() as concord:
+        context = (
+            concord.propose(
+                _Endpoint(CONTROLLER, "session"),
+                _spec(participants=(CONTROLLER,), participant_sessions={}),
+            )
+            if kind == "agreement"
+            else concord.participant(
+                _Endpoint(MANAGER, "session"),
+                ConcordParticipantPolicy(profile=PROFILE, select=_accept_all),
+            )
+        )
+        entered = anyio.Event()
+        release = anyio.Event()
+        original = concord._view.wait_current
+
+        async def delayed_readiness():
+            # Model an in-flight operation that acknowledges after cancellation.
+            with anyio.CancelScope(shield=True):
+                await original()
+                entered.set()
+                await release.wait()
+
+        monkeypatch.setattr(concord._view, "wait_current", delayed_readiness)
+        errors = []
+
+        async def enter():
+            try:
+                await context.__aenter__()
+            except BaseException as exc:
+                errors.append(exc)
+
+        async with anyio.create_task_group() as group:
+            group.start_soon(enter)
+            await entered.wait()
+            group.start_soon(context.aclose)
+            with anyio.fail_after(1):
+                while not context._close_started:
+                    await anyio.sleep(0)
+            release.set()
+        assert errors
+        assert context.state.phase is ConcordLifecyclePhase.CLOSED
+        assert not context.state.current

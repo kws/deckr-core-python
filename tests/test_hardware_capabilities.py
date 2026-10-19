@@ -53,9 +53,7 @@ def test_button_values_and_schemas_are_canonical_deckr_contracts() -> None:
 
 
 def test_encoder_relative_value_accepts_signed_delta_and_direction() -> None:
-    clockwise = encoder_relative_input_value(
-        {"delta": 1, "direction": "clockwise"}
-    )
+    clockwise = encoder_relative_input_value({"delta": 1, "direction": "clockwise"})
     counterclockwise = encoder_relative_input_value(
         {"delta": -1, "direction": "counterclockwise"}
     )
@@ -71,9 +69,7 @@ def test_encoder_relative_value_rejects_zero_and_mismatched_direction() -> None:
         encoder_relative_input_value({"delta": 0})
 
     with pytest.raises(ValidationError, match="must have negative delta"):
-        encoder_relative_input_value(
-            {"delta": 1, "direction": "counterclockwise"}
-        )
+        encoder_relative_input_value({"delta": 1, "direction": "counterclockwise"})
 
 
 def test_touch_gesture_values_and_schema_are_canonical_deckr_contracts() -> None:
@@ -98,7 +94,9 @@ def test_touch_gesture_values_and_schema_are_canonical_deckr_contracts() -> None
     assert json_schema["oneOf"][1]["required"] == ["eventType", "direction"]
 
 
-def test_raster_bitmap_command_params_and_schema_are_canonical_deckr_contracts() -> None:
+def test_raster_bitmap_command_params_and_schema_are_canonical_deckr_contracts() -> (
+    None
+):
     set_frame = raster_bitmap_command_params(
         "set_frame",
         MappingProxyType({"image": "ZnJhbWU=", "encoding": "jpeg"}),

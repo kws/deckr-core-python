@@ -17,10 +17,7 @@ from deckr.contracts.lanes import (
     MessageContractRegistry,
 )
 from deckr.contracts.messages import (
-    ACTIONS_LANE,
     CORE_LANE_NAMES,
-    HARDWARE_MESSAGES_LANE,
-    SERVICES_LANE,
     BroadcastTarget,
     DeckrMessage,
     EndpointAddress,
@@ -396,7 +393,8 @@ def validate_message_for_contract(
             f"Message type {message.message_type!r} is not supported on "
             f"lane {message.lane!r}"
         )
-    _validate_known_lane_body(message)
+    if contract.body_validator is not None:
+        contract.body_validator(message)
     if (
         contract.allowed_sender_families is not None
         and message.sender.family not in contract.allowed_sender_families
@@ -500,23 +498,6 @@ def _validate_contract_requirement(
             f"Message type {message.message_type!r} on lane {message.lane!r} "
             "must not carry a Concord contract pointer"
         )
-
-
-def _validate_known_lane_body(message: DeckrMessage) -> None:
-    if message.lane == ACTIONS_LANE:
-        from deckr.actions.messages import action_body
-
-        action_body(message)
-        return
-    if message.lane == HARDWARE_MESSAGES_LANE:
-        from deckr.hardware.messages import hardware_body_from_message
-
-        hardware_body_from_message(message)
-        return
-    if message.lane == SERVICES_LANE:
-        from deckr.services.messages import service_body
-
-        service_body(message)
 
 
 def _coerce_target(target: str | EndpointAddress | MessageTarget) -> MessageTarget:

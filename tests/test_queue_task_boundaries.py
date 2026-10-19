@@ -11,18 +11,18 @@ _Boundary = tuple[Path, str, str, str]
 
 _STATE_STREAM_OWNERS = {
     (
-        Path("src/deckr/core/util/anyio.py"),
+        Path("src/deckr/core/util/state.py"),
         "CoalescedStateBroadcaster",
     ),
-    (Path("src/deckr/substrates/nats_kv.py"), "NatsKvMaterializedBucket"),
-    (Path("src/deckr/beacon.py"), "Beacon"),
+    (Path("src/deckr/core/kv_source.py"), "KvMaterializedSource"),
+    (Path("src/deckr/_beacon/_api.py"), "Beacon"),
     (Path("src/deckr/beacon.py"), "_BeaconSubscriber"),
-    (Path("src/deckr/concord.py"), "Concord"),
+    (Path("src/deckr/_concord/_api.py"), "Concord"),
     (Path("src/deckr/concord.py"), "_ConcordSubscriber"),
-    (Path("src/deckr/_concord/_participant.py"), "ConcordParticipant"),
-    (Path("src/deckr/services/views.py"), "ServiceViewStore"),
+    (Path("src/deckr/_concord/_participant_context.py"), "ConcordParticipant"),
+    (Path("src/deckr/services/view_store.py"), "ServiceViewStore"),
     (
-        Path("src/deckr/services/subscriptions.py"),
+        Path("src/deckr/services/subscription_manager.py"),
         "SharedResourceSubscriptionManager",
     ),
 }
@@ -39,62 +39,76 @@ class _TemporaryBoundary:
 # Keeping exact semantic call sites here makes accidental replacement with an
 # unbounded registry or queue visible in the same audit as temporary debt.
 _PERMANENT_BOUNDED_BOUNDARIES: dict[_Boundary, int] = {
+    # Released ownership is pruned against the open-contract snapshot at bootstrap.
     (
-        Path("src/deckr/_concord/_participant.py"),
-        "ConcordParticipant.__init__",
-        "self._managed",
+        Path("src/deckr/_concord/_owner.py"),
+        "ConcordOwnerBootstrap.__init__",
+        "self._released",
+        "task_or_reply_route_map",
+    ): 1,
+    # Raw ingress is bounded and overflow permanently fails this consumer.
+    (
+        Path("src/deckr/substrates/_nats_watch.py"),
+        "NatsKvWatch.__init__",
+        "self._send, self._receive",
+        "bounded_memory_stream",
+    ): 1,
+    (
+        Path("src/deckr/_concord/_participant_resources.py"),
+        "ParticipantResources.__init__",
+        "self.managed",
         "task_or_reply_route_map",
     ): 1,
     (
-        Path("src/deckr/_concord/_participant.py"),
-        "ConcordParticipant.__init__",
-        "self._leases",
+        Path("src/deckr/_concord/_participant_resources.py"),
+        "ParticipantResources.__init__",
+        "self.leases",
         "task_or_reply_route_map",
     ): 1,
     (
-        Path("src/deckr/_concord/_participant.py"),
-        "ConcordParticipant.__init__",
-        "self._cleanup_leases",
+        Path("src/deckr/_concord/_participant_resources.py"),
+        "ParticipantResources.__init__",
+        "self.cleanup_leases",
         "task_or_reply_route_map",
     ): 1,
     (
-        Path("src/deckr/_concord/_participant.py"),
-        "ConcordParticipant.__init__",
-        "self._cleanup_wakeups",
+        Path("src/deckr/_concord/_participant_resources.py"),
+        "ParticipantResources.__init__",
+        "self.cleanup_wakeups",
         "task_or_reply_route_map",
     ): 1,
     (
-        Path("src/deckr/core/util/anyio.py"),
+        Path("src/deckr/core/util/state.py"),
         "_CancellationSafeMutex.__init__",
         "self._scopes",
         "task_or_reply_route_map",
     ): 1,
     (
-        Path("src/deckr/core/util/anyio.py"),
+        Path("src/deckr/core/util/state.py"),
         "CoalescedStateBroadcaster.__init__",
         "self._registrations",
         "subscriber_registry",
     ): 1,
     (
-        Path("src/deckr/core/util/anyio.py"),
+        Path("src/deckr/core/util/state.py"),
         "CoalescedStateBroadcaster.subscribe",
         "send, receive",
         "bounded_state_stream",
     ): 1,
     (
-        Path("src/deckr/substrates/nats.py"),
-        "NatsSubstrate.request",
+        Path("src/deckr/bindings/nats.py"),
+        "DeckrNatsSubstrate.request",
         "send, receive",
         "bounded_memory_stream",
     ): 1,
     (
-        Path("src/deckr/services/client.py"),
+        Path("src/deckr/services/_client.py"),
         "DeckrServices._race_service_candidates",
         "send, receive",
         "bounded_memory_stream",
     ): 1,
     (
-        Path("src/deckr/substrates/supervised_nats.py"),
+        Path("src/deckr/substrates/nats_server.py"),
         "NatsServerSupervisor.__init__",
         "self._logs",
         "bounded_queue",
@@ -108,7 +122,7 @@ _PERMANENT_BOUNDED_BOUNDARIES: dict[_Boundary, int] = {
 # being removed too.
 _TEMPORARY_BOUNDARIES: dict[_Boundary, _TemporaryBoundary] = {
     (
-        Path("src/deckr/components/_runner.py"),
+        Path("src/deckr/components/manager.py"),
         "ComponentManager.__init__",
         "self._running",
         "task_or_reply_route_map",
@@ -117,7 +131,7 @@ _TEMPORARY_BOUNDARIES: dict[_Boundary, _TemporaryBoundary] = {
         reason="cap live components and their owned work",
     ),
     (
-        Path("src/deckr/components/_runner.py"),
+        Path("src/deckr/components/manager.py"),
         "ComponentManager.__init__",
         "self._lifecycle_by_name",
         "task_or_reply_route_map",
@@ -126,7 +140,7 @@ _TEMPORARY_BOUNDARIES: dict[_Boundary, _TemporaryBoundary] = {
         reason="bound component lifecycle identities with component admission",
     ),
     (
-        Path("src/deckr/services/client.py"),
+        Path("src/deckr/services/_client.py"),
         "DeckrServices.__init__",
         "self._active_service_use_leases",
         "task_or_reply_route_map",
@@ -135,7 +149,7 @@ _TEMPORARY_BOUNDARIES: dict[_Boundary, _TemporaryBoundary] = {
         reason="cap and close active service-use lease owners",
     ),
     (
-        Path("src/deckr/components/_runner.py"),
+        Path("src/deckr/components/manager.py"),
         "ComponentManager.__init__",
         "self._event_send, self._event_receive",
         "bounded_memory_stream",
@@ -153,8 +167,8 @@ _TEMPORARY_BOUNDARIES: dict[_Boundary, _TemporaryBoundary] = {
         reason="cap endpoint subscription registrations and own their shutdown",
     ),
     (
-        Path("src/deckr/substrates/nats.py"),
-        "NatsSubstrate.subscribe",
+        Path("src/deckr/bindings/nats.py"),
+        "DeckrNatsSubstrate.subscribe",
         "send, receive",
         "bounded_memory_stream",
     ): _TemporaryBoundary(
@@ -162,7 +176,7 @@ _TEMPORARY_BOUNDARIES: dict[_Boundary, _TemporaryBoundary] = {
         reason="enforce the lane capacity invariant and typed overload closure",
     ),
     (
-        Path("src/deckr/services/subscriptions.py"),
+        Path("src/deckr/services/subscription_manager.py"),
         "SharedResourceSubscriptionManager.__init__",
         "self._subscribers",
         "subscriber_registry",
@@ -171,8 +185,8 @@ _TEMPORARY_BOUNDARIES: dict[_Boundary, _TemporaryBoundary] = {
         reason="cap logical sessions under provider-lease-scoped ownership",
     ),
     (
-        Path("src/deckr/substrates/nats.py"),
-        "NatsSubstrate.__init__",
+        Path("src/deckr/bindings/nats.py"),
+        "DeckrNatsSubstrate.__init__",
         "self._reply_subjects",
         "task_or_reply_route_map",
     ): _TemporaryBoundary(
@@ -319,7 +333,7 @@ class Example:
 def test_queue_task_audit_detects_bounded_state_streams_and_registries() -> None:
     tree = ast.parse(
         """
-class NatsKvMaterializedBucket:
+class KvMaterializedSource:
     def __init__(self):
         self._subscribers: set[object] = set()
 
@@ -327,22 +341,20 @@ class NatsKvMaterializedBucket:
         send, receive = anyio.create_memory_object_stream(max_buffer_size=capacity)
 """
     )
-    visitor = _QueueTaskBoundaryVisitor(
-        Path("src/deckr/substrates/nats_kv.py")
-    )
+    visitor = _QueueTaskBoundaryVisitor(Path("src/deckr/core/kv_source.py"))
     visitor.visit(tree)
 
     assert visitor.boundaries == Counter(
         {
             (
-                Path("src/deckr/substrates/nats_kv.py"),
-                "NatsKvMaterializedBucket.__init__",
+                Path("src/deckr/core/kv_source.py"),
+                "KvMaterializedSource.__init__",
                 "self._subscribers",
                 "subscriber_registry",
             ): 1,
             (
-                Path("src/deckr/substrates/nats_kv.py"),
-                "NatsKvMaterializedBucket.subscribe",
+                Path("src/deckr/core/kv_source.py"),
+                "KvMaterializedSource.subscribe",
                 "send, receive",
                 "bounded_state_stream",
             ): 1,
@@ -710,7 +722,9 @@ def _production_python_files(repository: Path) -> tuple[Path, ...]:
         sorted(
             path
             for path in (repository / "src").rglob("*.py")
-            if "tests" not in path.parts and "__pycache__" not in path.parts and "testing" not in path.parts
+            if "tests" not in path.parts
+            and "__pycache__" not in path.parts
+            and "testing" not in path.parts
         )
     )
 

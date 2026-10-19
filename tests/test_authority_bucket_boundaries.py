@@ -153,7 +153,7 @@ def test_component_typed_maintenance_route_uses_canonical_store_bundle() -> None
 
 def test_reserved_authority_bucket_names_have_one_production_definition() -> None:
     repository = Path(__file__).resolve().parents[1]
-    registry = Path("src/deckr/_authority_buckets.py")
+    registry = Path("src/deckr/bindings/authority_stores.py")
     duplicates: list[str] = []
     for path in _production_python_files(repository):
         relative = path.relative_to(repository)

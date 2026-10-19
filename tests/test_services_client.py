@@ -171,7 +171,9 @@ def _managed_service_contract(
     consumer_session_id: str = "client-session",
     local_authority: bool = True,
 ) -> ConcordManagedContract:
-    participants = tuple(sorted((service_address("demo-home"), _CLIENT_ADDRESS), key=str))
+    participants = tuple(
+        sorted((service_address("demo-home"), _CLIENT_ADDRESS), key=str)
+    )
     contract = ContractHandle(
         key="contract-1:1",
         contract_id="contract-1",
@@ -280,7 +282,9 @@ class _FakeManagedServiceParticipant:
 
 
 def _contract() -> ContractHandle:
-    participants = tuple(sorted((_CLIENT_ADDRESS, service_address("demo-home")), key=str))
+    participants = tuple(
+        sorted((_CLIENT_ADDRESS, service_address("demo-home")), key=str)
+    )
     return ContractHandle(
         key="contract-1:1",
         contract_id="contract-1",
@@ -352,23 +356,31 @@ def _agreement(
     return agreement
 
 
+@asynccontextmanager
+async def _idle_authority_watch():
+    async def states():
+        await anyio.sleep_forever()
+        yield None
+
+    yield states()
+
+
 def _lease(
     descriptor: ServiceDescriptor | None = None,
     *,
-    refresh: AsyncMock | None = None,
+    require_authority: AsyncMock | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         descriptor=descriptor or _descriptor(),
         contract=_contract(),
-        refresh=refresh or AsyncMock(),
+        agreement=SimpleNamespace(watch_state=_idle_authority_watch),
+        require_authority=require_authority or AsyncMock(),
     )
 
 
 class _RaceAgreement:
     def __init__(self, descriptor: ServiceDescriptor, contract_id: str) -> None:
-        participants = tuple(
-            sorted((_CLIENT_ADDRESS, descriptor.endpoint), key=str)
-        )
+        participants = tuple(sorted((_CLIENT_ADDRESS, descriptor.endpoint), key=str))
         self.contract = ContractHandle(
             key=f"contracts.{contract_id}.1",
             contract_id=contract_id,
@@ -545,6 +557,7 @@ async def test_use_matching_resolves_descriptor_and_negotiates() -> None:
     protocol = _protocol()
     agreement = _agreement()
     concord = SimpleNamespace(propose=Mock(return_value=agreement))
+
     async def watch_records():
         yield (_descriptor(),)
         await anyio.sleep_forever()
@@ -859,7 +872,9 @@ async def test_use_matching_reconnects_with_fresh_contract_after_winner_loss() -
                 timeout_seconds=1,
             )
             assert ready.local_authority
-            assert proposals[0].contract.contract_id != proposals[1].contract.contract_id
+            assert (
+                proposals[0].contract.contract_id != proposals[1].contract.contract_id
+            )
         task_group.cancel_scope.cancel()
 
 
@@ -1219,7 +1234,9 @@ async def test_use_translates_terminal_protocol_conflict_during_negotiation(
 
 
 @pytest.mark.asyncio
-async def test_use_translates_unknown_protocol_conflict_to_service_use_conflict() -> None:
+async def test_use_translates_unknown_protocol_conflict_to_service_use_conflict() -> (
+    None
+):
     message = "Concord participant is already attached"
     agreement = _agreement(
         enter_error=ConcordConflict(
@@ -1278,7 +1295,7 @@ async def test_service_use_lease_refresh_preserves_terminal_protocol_conflicts(
     )
 
     with pytest.raises(ServiceUnavailable) as exc_info:
-        await lease.refresh()
+        await lease.require_authority()
 
     assert exc_info.value.code == expected_code
     assert exc_info.value.diagnostics["status"] == expected_status
@@ -1305,14 +1322,16 @@ async def test_service_use_lease_refresh_fails_closed_when_unavailable() -> None
         local_authority=False,
     )
     with pytest.raises(ServiceUnavailable) as exc_info:
-        await lease.refresh()
+        await lease.require_authority()
 
     assert exc_info.value.code == "contract_unavailable"
     assert service_unavailable_ends_service_use(exc_info.value)
 
 
 @pytest.mark.asyncio
-async def test_service_use_lease_refresh_raises_unavailable_without_valid_lease() -> None:
+async def test_service_use_lease_refresh_raises_unavailable_without_valid_lease() -> (
+    None
+):
     descriptor = _descriptor()
     agreement = _agreement(ContractValidity(ContractValidityStatus.UNAVAILABLE))
     lease = ServiceUseLease(
@@ -1323,10 +1342,12 @@ async def test_service_use_lease_refresh_raises_unavailable_without_valid_lease(
     )
 
     with pytest.raises(ServiceUnavailable) as exc_info:
-        await lease.refresh()
+        await lease.require_authority()
 
     assert exc_info.value.code == "contract_unavailable"
-    assert exc_info.value.diagnostics["status"] == ContractValidityStatus.UNAVAILABLE.value
+    assert (
+        exc_info.value.diagnostics["status"] == ContractValidityStatus.UNAVAILABLE.value
+    )
 
 
 @pytest.mark.asyncio
@@ -1531,7 +1552,9 @@ async def test_managed_service_contract_rejects_response_subject_mismatch() -> N
 
 
 @pytest.mark.asyncio
-async def test_managed_service_contract_does_not_repair_missing_state_before_send() -> None:
+async def test_managed_service_contract_does_not_repair_missing_state_before_send() -> (
+    None
+):
     managed = _managed_service_contract()
     participant = _FakeManagedServiceParticipant((), after_reconcile=(managed,))
     endpoint = SimpleNamespace(
@@ -1730,7 +1753,7 @@ async def test_watch_view_refreshes_lease_before_delivering_changes() -> None:
     }
     changed_payload = {**current_payload, "volume": 13}
     lease = _lease(
-        refresh=AsyncMock(
+        require_authority=AsyncMock(
             side_effect=[
                 None,
                 None,
@@ -1764,7 +1787,7 @@ async def test_watch_view_refreshes_lease_before_delivering_changes() -> None:
     await stream.aclose()
 
     assert exc_info.value.code == "contract_session_mismatch"
-    assert lease.refresh.await_count == 3
+    assert lease.require_authority.await_count == 3
 
 
 @pytest.mark.asyncio
@@ -1810,7 +1833,7 @@ async def test_watch_view_does_not_emit_idle_duplicate_payloads() -> None:
     read_context, watched_view = observed_watch[0]
     assert read_context.reader is ServiceViewWriter.CONSUMER
     assert watched_view == view
-    assert lease.refresh.await_count == 2
+    assert lease.require_authority.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -1832,7 +1855,7 @@ async def test_view_access_refreshes_lease_before_operations() -> None:
     assert await access.read(view) is None
     await access.put(view, {"ok": True})
 
-    assert lease.refresh.await_count == 2
+    assert lease.require_authority.await_count == 2
     assert store.get.await_args.args[0].reader is ServiceViewWriter.CONSUMER
     assert store.put.await_args.kwargs["context"].writer is ServiceViewWriter.CONSUMER
 
@@ -1894,3 +1917,58 @@ def test_service_message_helper_matches_service_unavailable_helper() -> None:
     assert service_unavailable_ends_service_use(unavailable)
     assert service_message_ends_service_use(reply)
     assert not service_message_ends_service_use(ordinary)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("side", ["consumer", "provider"])
+async def test_service_request_uses_real_endpoint_default_timeout(side):
+    from deckr.bindings.messages import with_deckr_body_codec
+    from deckr.contracts.lanes import CORE_LANE_CONTRACTS
+    from deckr.lanes import EndpointSession
+    from deckr.services.consumer_messaging import ServiceConsumerMessaging
+
+    async def respond(message, *, timeout, accept):
+        assert timeout == 2.0
+        body = ServiceMessageBody.from_wire(message.body)
+        return service_response_message(
+            sender=message.recipient.endpoint,
+            sender_session_id=message.recipient_session_id,
+            recipient=message.sender,
+            recipient_session_id=message.sender_session_id,
+            subject=message.subject,
+            in_reply_to=message.message_id,
+            contract=message.contract,
+            body=ServiceMessageBody(
+                serviceNamespace=body.service_namespace,
+                name=body.name,
+                intent=body.intent,
+                exchangePattern=body.exchange_pattern,
+                status=ServiceMessageStatus.OK,
+                result={"ok": True},
+            ),
+        )
+
+    bus = SimpleNamespace(
+        request=AsyncMock(side_effect=respond),
+        contract_for=lambda lane: with_deckr_body_codec(CORE_LANE_CONTRACTS[lane]),
+    )
+    endpoint = EndpointSession(
+        address=_CLIENT_ADDRESS if side == "consumer" else service_address("demo-home"),
+        session_id="client-session" if side == "consumer" else "service-session",
+        metadata={},
+        message_bus=bus,
+    )
+    if side == "consumer":
+        reply = await ServiceConsumerMessaging(endpoint)._request(_lease(), "play")
+    else:
+        managed = _managed_service_contract()
+        channel = ManagedServiceContract(
+            endpoint=endpoint,
+            participant=_FakeManagedServiceParticipant((managed,)),
+            contract=managed.contract,
+            protocol=_service_to_consumer_protocol(),
+            service_id="demo-home",
+        )
+        reply = await channel.request("collectDiagnostics")
+    assert reply.status is ServiceMessageStatus.OK
+    bus.request.assert_awaited_once()

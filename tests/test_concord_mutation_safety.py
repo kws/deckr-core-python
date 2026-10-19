@@ -699,7 +699,9 @@ async def test_token_cleanup_exhaustion_remains_durably_pending() -> None:
 
 
 @pytest.mark.asyncio
-async def test_post_contract_delete_store_unavailability_remains_durably_pending() -> None:
+async def test_post_contract_delete_store_unavailability_remains_durably_pending() -> (
+    None
+):
     token_store = ToggleUnavailableTokenStore()
     contract_store = ContractDeleteMakesTokenStoreUnavailable(token_store)
     harness = ConcordMaintenanceHarness(
@@ -899,8 +901,9 @@ async def test_participant_lease_refresh_normalizes_malformed_token_conflict() -
         "controller-session",
         token_id="controller-token",
     )
+    await harness.materialize()
     lease = ConcordParticipantLease(
-        harness.concord._coordinator,  # noqa: SLF001
+        harness.concord._repository,  # noqa: SLF001
         harness.concord._view,  # noqa: SLF001
         contract=contract,
         participant=CONTROLLER,
@@ -939,7 +942,7 @@ async def test_malformed_heartbeat_state_stays_within_lease_task_scope() -> None
         token_id="controller-token",
     )
     lease = ConcordParticipantLease(
-        harness.concord._coordinator,  # noqa: SLF001
+        harness.concord._repository,  # noqa: SLF001
         harness.concord._view,  # noqa: SLF001
         contract=contract,
         participant=CONTROLLER,
