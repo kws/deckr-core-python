@@ -319,6 +319,26 @@ class DeckrMessage(DeckrModel):
     trace: TraceContext | None = None
     body: JsonObject
 
+    @classmethod
+    def from_wire(cls, value: Mapping[str, Any]) -> DeckrMessage:
+        # Defaults are for local message construction. A receiver must not mint
+        # a new identity or extend a relative expiry for an incomplete envelope.
+        if not {"messageId", "createdAt"}.issubset(value):
+            raise ValueError("Wire messages require messageId and createdAt")
+        return super().from_wire(value)
+
+    @field_validator("message_id")
+    @classmethod
+    def _validate_message_id(cls, value: str) -> str:
+        return _require_identity_part(value, field_name="Message id")
+
+    @field_validator("created_at", "expires_at")
+    @classmethod
+    def _validate_timestamp(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("Message timestamps require a timezone")
+        return value
+
     @field_validator("ttl_ms")
     @classmethod
     def _validate_ttl_ms(cls, value: int | None) -> int | None:

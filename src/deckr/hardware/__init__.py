@@ -1,4 +1,4 @@
-"""Shared hardware-facing contracts."""
+"""Hardware contracts, discovery, and owned manager and client lifetimes."""
 
 from deckr.hardware.capabilities import (
     BUTTON_ACTIVATION_VALUE_SCHEMA_ID,
@@ -36,6 +36,8 @@ from deckr.hardware.capabilities import (
     touch_gesture_input_value,
     touch_gesture_value_schema,
 )
+from deckr.hardware.claim_spec import HardwareClaimSpec
+from deckr.hardware.client import DeckrHardware
 from deckr.hardware.descriptors import (
     BUTTON_ACTIVATION_EVENTS,
     BUTTON_MOMENTARY_EVENTS,
@@ -81,6 +83,14 @@ from deckr.hardware.descriptors import (
     descriptor_schema_artifacts,
     device_descriptor_schema,
 )
+from deckr.hardware.discovery import (
+    HardwareCandidate,
+    HardwareDirectory,
+    HardwareDiscoveryState,
+    hardware_candidates,
+)
+from deckr.hardware.managed_claim import ManagedHardwareClaim
+from deckr.hardware.operations import HardwareEvent
 from deckr.hardware.profiles import (
     HARDWARE_CLAIM_PROFILE_ID,
     HARDWARE_FEATURE_ID,
@@ -93,13 +103,41 @@ from deckr.hardware.profiles import (
     hardware_claim_conflicts,
     hardware_payload_from_advertisement,
 )
+from deckr.hardware.recovery import (
+    HardwareRecoveryPolicy,
+    ManagedHardwareUse,
+    same_hardware,
+)
 from deckr.hardware.runtime import (
     HardwareManagerContext,
     HardwareManagerRuntime,
     LiveHardwareClaim,
 )
+from deckr.hardware.state import (
+    HardwareClaimState,
+    HardwareFailure,
+    HardwareManagerState,
+    HardwarePhase,
+    HardwareUnavailable,
+)
 
 __all__ = [
+    "DeckrHardware",
+    "HardwareCandidate",
+    "HardwareClaimSpec",
+    "HardwareClaimState",
+    "HardwareDirectory",
+    "HardwareDiscoveryState",
+    "HardwareEvent",
+    "HardwareFailure",
+    "HardwareManagerState",
+    "HardwarePhase",
+    "HardwareRecoveryPolicy",
+    "HardwareUnavailable",
+    "ManagedHardwareClaim",
+    "ManagedHardwareUse",
+    "hardware_candidates",
+    "same_hardware",
     "BUTTON_ACTIVATION_EVENTS",
     "BUTTON_ACTIVATION_VALUE_SCHEMA_ID",
     "BUTTON_MOMENTARY_EVENTS",

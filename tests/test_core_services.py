@@ -482,6 +482,7 @@ async def test_start_components_passes_slot_endpoint_opener_and_protocols() -> N
     seen: dict[str, object] = {}
 
     def factory(context):
+        seen["context"] = context
         seen["slot_address"] = context.endpoint_address("controller")
         seen["beacon"] = context.require_beacon()
         seen["concord"] = context.require_concord()
@@ -530,6 +531,18 @@ async def test_start_components_passes_slot_endpoint_opener_and_protocols() -> N
         )
         assert seen["beacon"] is deckr.beacon
         assert seen["concord"] is deckr.concord
+        context = seen["context"]
+        async with (
+            deckr.endpoint("hardware_manager:component-test") as manager_endpoint,
+            context.hardware_manager(
+                manager_endpoint, manager_id="component-test"
+            ) as manager,
+            context.open_endpoint("controller") as controller_endpoint,
+            context.hardware(controller_endpoint) as hardware,
+            deckr.hardware(controller_endpoint) as shared_hardware,
+        ):
+            assert manager.state.phase == "ready"
+            assert hardware.directory is shared_hardware.directory
         assert str(seen["slot_address"]) == "controller:controller-main"
         assert str(seen["endpoint_address"]) == "controller:controller-main"
         assert seen["endpoint_metadata"] == {

@@ -11,7 +11,13 @@ import anyio
 
 from deckr.concord import ConcordConflict, ConcordManagedContract, ContractHandle
 from deckr.contracts.authority import ContractPointer
-from deckr.contracts.messages import DeckrMessage, EndpointTarget, entity_subject
+from deckr.contracts.messages import (
+    SERVICES_LANE,
+    DeckrMessage,
+    EndpointTarget,
+    entity_subject,
+    message_is_expired,
+)
 from deckr.services.messages import (
     SERVICE_MESSAGE,
     ServiceExchangePattern,
@@ -19,6 +25,7 @@ from deckr.services.messages import (
     ServiceMessageDirection,
     service_body,
 )
+from deckr.services.payload_validation import validate_service_payloads
 from deckr.services.runtime import (
     ServiceDescriptor,
     ServiceManagedContractContext,
@@ -228,6 +235,10 @@ def _authorize_inbound_message(
         service_namespace=descriptor.namespace,
         name=expected_name,
     )
+    try:
+        validate_service_payloads(definition, body)
+    except ValueError as exc:
+        raise ServiceUnavailable("invalid_service_payload", str(exc)) from exc
     return body
 
 
@@ -237,6 +248,10 @@ def _is_valid_response_body(
     name: str,
     definition: ServiceMessageDefinition,
 ) -> bool:
+    try:
+        validate_service_payloads(definition, body)
+    except ValueError:
+        return False
     return (
         body.service_namespace == service_namespace
         and body.name == name
@@ -267,7 +282,9 @@ def _assert_response_envelope(
         else ContractPointer.model_validate(contract)
     )
     if (
-        message.sender != sender
+        message.lane != SERVICES_LANE
+        or message_is_expired(message)
+        or message.sender != sender
         or message.sender_session_id != sender_session_id
         or not isinstance(message.recipient, EndpointTarget)
         or message.recipient.endpoint != recipient

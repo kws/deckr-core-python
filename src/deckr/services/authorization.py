@@ -12,7 +12,13 @@ from deckr.concord import (
     ContractRecord,
 )
 from deckr.contracts.authority import ContractPointer
-from deckr.contracts.messages import DeckrMessage, EndpointAddress, service_address
+from deckr.contracts.messages import (
+    SERVICES_LANE,
+    DeckrMessage,
+    EndpointAddress,
+    message_is_expired,
+    service_address,
+)
 from deckr.services.errors import ServiceUseAuthorizationError
 from deckr.services.messages import (
     SERVICE_MESSAGE,
@@ -20,6 +26,7 @@ from deckr.services.messages import (
     ServiceMessageDirection,
     service_body,
 )
+from deckr.services.payload_validation import validate_service_payloads
 from deckr.services.profile import is_service_use_record
 from deckr.services.protocol import ServiceProtocol, ServiceViewWriter
 from deckr.services.view_context import (
@@ -47,6 +54,17 @@ async def authorize_service_message(
     name: str | None = None,
 ) -> AuthorizedServiceMessage:
     """Validate that a service message is authorized by its exact Concord pointer."""
+
+    if (
+        message.lane != SERVICES_LANE
+        or message_is_expired(message)
+        or getattr(message.recipient, "endpoint", None) != participant.participant
+        or message.recipient_session_id != participant.session_id
+    ):
+        raise ServiceUseAuthorizationError(
+            "scope_mismatch",
+            "Service envelope is expired or targets another endpoint session",
+        )
 
     try:
         body = service_body(message)
@@ -205,6 +223,10 @@ async def authorize_service_message(
         record=validity.contract,
         validity=validity,
     )
+    try:
+        validate_service_payloads(definition, body)
+    except ValueError as exc:
+        raise ServiceUseAuthorizationError("invalid_service_payload", str(exc)) from exc
     return AuthorizedServiceMessage(
         contract=managed.contract,
         record=validity.contract,

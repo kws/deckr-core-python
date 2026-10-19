@@ -186,6 +186,8 @@ def _require_not_endpoint_address(value: str, *, field_name: str) -> str:
 
 def _require_contract_token(value: str, *, field_name: str) -> str:
     normalized = _require_non_empty(value, field_name=field_name)
+    if normalized != value:
+        raise ValueError(f"{field_name} must not contain surrounding whitespace")
     if not _CONTRACT_NAME_RE.fullmatch(normalized):
         raise ValueError(
             f"{field_name} must be a lowercase contract identifier, not a display label"

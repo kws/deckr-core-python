@@ -347,6 +347,66 @@ async def test_blocked_pointer_cancellation_cannot_hold_public_authority() -> No
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("interrupt", [False, True])
+async def test_explicit_participant_cancel_revokes_before_storage_and_retains_cleanup(
+    interrupt,
+):
+    contracts = LifecycleFaultHarness(bucket="contracts")
+    tokens = LifecycleFaultHarness(bucket="tokens", ttl_seconds=60)
+
+    def accept_all(candidates):
+        return ConcordParticipantSelection(c.contract.pointer for c in candidates)
+
+    async with (
+        _running_concord(contracts, tokens) as concord,
+        concord.participant(
+            _Endpoint(MANAGER, "provider-session"),
+            ConcordParticipantPolicy(profile=PROFILE, select=accept_all),
+        ) as participant,
+        concord.propose(_Endpoint(CONTROLLER, "client-session"), _spec()) as agreement,
+    ):
+        await agreement.wait_for_state(lambda s: s.valid, timeout_seconds=2)
+        await participant.wait_for_state(
+            lambda s: any(c.local_authority for c in s.contracts), timeout_seconds=2
+        )
+        barrier = contracts.block_next("update", phase=LifecycleFaultPhase.BEFORE)
+        finished = anyio.Event()
+        scope = anyio.CancelScope()
+
+        async def cancel():
+            with scope:
+                await participant.cancel(
+                    agreement.contract, reason="domain consent withdrawn"
+                )
+            finished.set()
+
+        async with anyio.create_task_group() as group:
+            group.start_soon(cancel)
+            try:
+                with anyio.fail_after(2):
+                    await barrier.wait()
+                # Stored validity can remain true while cleanup is blocked.
+                assert (
+                    await concord.contract_record(agreement.contract)
+                ).state == ContractState.OPEN
+                managed = participant.managed_contract(agreement.contract)
+                assert managed is None or not managed.local_authority
+                assert not any(c.local_authority for c in participant.state.contracts)
+                if interrupt:
+                    scope.cancel()
+            finally:
+                barrier.unblock()
+            with anyio.fail_after(2):
+                await finished.wait()
+                while (
+                    await concord.contract_record(agreement.contract)
+                ).state != ContractState.CANCELLED:
+                    await anyio.sleep(0)
+            managed = participant.managed_contract(agreement.contract)
+            assert managed is None or not managed.local_authority
+
+
+@pytest.mark.asyncio
 async def test_prepared_create_before_commit_failure_never_allocates_a_successor() -> (
     None
 ):

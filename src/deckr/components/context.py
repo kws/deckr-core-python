@@ -9,7 +9,7 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from deckr.hardware import DeviceDescriptor, HardwareManagerContext
+    from deckr.hardware import DeckrHardware, DeviceDescriptor, HardwareManagerContext
     from deckr.services import ServiceBackendStatus, ServiceProtocol, ServiceProvider
 
 
@@ -57,6 +57,8 @@ class ComponentContext:
         Callable[[], ConcordMaintenanceStores[Any]] | None
     ) = None
     endpoint_for: ComponentEndpointOpener | None = None
+    hardware_for: Callable[[EndpointSession], DeckrHardware] | None = None
+    hardware_manager_for: Callable[..., HardwareManagerContext] | None = None
 
     def require_lane(self, name: str) -> Lane:
         return self.lanes.require(name)
@@ -128,6 +130,14 @@ class ComponentContext:
             labels=labels,
         )
 
+    def hardware(self, endpoint: EndpointSession) -> DeckrHardware:
+        """Share the host runtime's typed discovery and endpoint routing."""
+        if self.hardware_for is None:
+            raise RuntimeError(
+                "Deckr component context does not provide hardware support"
+            )
+        return self.hardware_for(endpoint)
+
     def hardware_manager(
         self,
         endpoint: EndpointSession,
@@ -140,19 +150,17 @@ class ComponentContext:
     ) -> HardwareManagerContext:
         """Return the canonical hardware lifecycle for this component."""
 
-        from deckr.hardware import HardwareManagerContext, HardwareManagerRuntime
-
-        return HardwareManagerContext(
-            HardwareManagerRuntime(
-                endpoint=endpoint,
-                beacon=self.require_beacon(),
-                concord=self.require_concord(),
-                manager_id=manager_id,
-                initial_devices=devices,
-                labels=labels,
-                command_handler=command_handler,
-                reset_handler=reset_handler,
+        if self.hardware_manager_for is None:
+            raise RuntimeError(
+                "Deckr component context does not provide hardware support"
             )
+        return self.hardware_manager_for(
+            endpoint,
+            manager_id=manager_id,
+            devices=devices,
+            labels=labels,
+            command_handler=command_handler,
+            reset_handler=reset_handler,
         )
 
     def kv_bucket(self, policy: KvBucketPolicy) -> Any:

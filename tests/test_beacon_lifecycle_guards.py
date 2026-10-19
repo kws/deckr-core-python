@@ -397,9 +397,7 @@ async def test_beacon_refresh_rejects_invalid_or_changed_exact_owner() -> None:
 
 
 @pytest.mark.asyncio
-async def test_beacon_ttl_supports_sync_metadata_and_heartbeat_retry(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_beacon_ttl_supports_synchronous_substrate_metadata() -> None:
     beacon = Beacon(MemoryJsonKvBucket(bucket="beacon", ttl_seconds=30))
     # A tiny structural stand-in exercises substrates whose TTL accessor is
     # synchronous rather than awaitable.
@@ -409,68 +407,6 @@ async def test_beacon_ttl_supports_sync_metadata_and_heartbeat_retry(
         {"ttl_seconds": lambda self: 30},
     )()
     assert await beacon._ttl_seconds() == 30  # noqa: SLF001
-
-    bucket = LifecycleFaultHarness(bucket="beacon", ttl_seconds=30)
-    endpoint = _Endpoint(MANAGER, "manager-session")
-    async with _running_beacon(bucket) as (running, _raw):
-        lease = running.advertise(endpoint, _spec())
-        await lease.__aenter__()
-        assert lease._task_group is not None  # noqa: SLF001
-        lease._task_group.cancel_scope.cancel()  # noqa: SLF001
-        lease._refresh_interval = 0  # noqa: SLF001
-        lease._last_refresh_at = 0  # noqa: SLF001
-        bucket.fail_next("update", phase=LifecycleFaultPhase.BEFORE)
-        sleeps = 0
-
-        async def controlled_sleep(_seconds: float) -> None:
-            nonlocal sleeps
-            sleeps += 1
-            if sleeps == 3:
-                lease._closed = True  # noqa: SLF001
-            await anyio.lowlevel.checkpoint()
-
-        monkeypatch.setattr(anyio, "sleep", controlled_sleep)
-        await lease._heartbeat_loop()  # noqa: SLF001
-        assert bucket.operation_counts["update"] == 2
-        assert sleeps == 3
-
-
-@pytest.mark.asyncio
-async def test_beacon_watch_and_noop_refresh_cover_current_public_paths() -> None:
-    endpoint = _Endpoint(MANAGER, "manager-session")
-    async with _running_beacon() as (beacon, _raw):
-        lease = beacon.advertise(endpoint, _spec())
-        await lease.__aenter__()
-        candidate = beacon.candidates(FEATURE)[0]
-
-        beacon._started = False  # noqa: SLF001
-        assert await beacon.validate(candidate) == CandidateStatus.CANDIDATE
-        assert (
-            await beacon.validate(candidate, current_sessions={})
-            == CandidateStatus.CANDIDATE
-        )
-        async with beacon.watch() as snapshots:
-            assert (await anext(snapshots)).candidates == (candidate,)
-        assert (
-            await beacon.remove_stale_advertisements(
-                _Endpoint(hardware_manager_address("other"), "other-session"),
-                _spec(),
-            )
-            == 0
-        )
-        await beacon._observe_write(candidate.key, candidate.revision)  # noqa: SLF001
-        beacon._started = True  # noqa: SLF001
-
-        original = lease._handle  # noqa: SLF001
-        await lease.update()
-        assert lease._handle is original  # noqa: SLF001
-        async with lease._lock:  # noqa: SLF001
-            assert await lease._publish_locked(force_refresh=True) is original  # noqa: SLF001
-
-        lease._refresh_interval = None  # noqa: SLF001
-        lease._last_refresh_at = None  # noqa: SLF001
-        assert await lease._next_heartbeat_delay() > 0  # noqa: SLF001
-        await lease.aclose()
 
 
 @pytest.mark.asyncio

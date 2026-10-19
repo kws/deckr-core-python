@@ -200,6 +200,8 @@ def _require_non_negative(value: int | None, *, field_name: str) -> int | None:
 
 def _require_contract_name(value: str, *, field_name: str) -> str:
     normalized = _require_text(value, field_name=field_name)
+    if normalized != value:
+        raise ValueError(f"{field_name} must not contain surrounding whitespace")
     if not _CONTRACT_NAME_RE.fullmatch(normalized):
         raise ValueError(f"{field_name} must be a lowercase contract identifier")
     return normalized
@@ -213,7 +215,7 @@ def _require_globally_qualified_name(value: str, *, field_name: str) -> str:
 
 
 def _require_capability_family(value: str, *, field_name: str) -> str:
-    normalized = _require_text(value, field_name=field_name)
+    normalized = _require_contract_name(value, field_name=field_name)
     if normalized in CORE_CAPABILITY_FAMILIES:
         return normalized
     if _EXTENSION_CAPABILITY_FAMILY_RE.fullmatch(normalized):

@@ -14,6 +14,7 @@ from pydantic import (
 )
 
 from deckr.contracts.models import DeckrModel, freeze_json, thaw_json
+from deckr.core.json_schema import local_validator
 from deckr.hardware._descriptor_rules import (
     _DIRECTION_ACCESS,
     _JSON_SCHEMA_CONTRACT_KEYS,
@@ -67,6 +68,7 @@ class CapabilitySchema(DeckrModel):
                 "capability schema must include a JSON Schema contract keyword"
             )
         _require_json_wire_safe(value, field_name="capability schema")
+        local_validator(thaw_json(value))
         return freeze_json(value)
 
     @field_serializer("json_schema")

@@ -272,6 +272,7 @@ class ComponentManager(Component):
                             logger.warning(
                                 f"Component '{component.name}' already exists, skipping start"
                             )
+                            started.set()
                             return
 
                         rc = RunningComponent(
@@ -369,10 +370,13 @@ class ComponentManager(Component):
             finally:
                 stopped.set()
                 # Clean up if we never successfully started
-                if not started.is_set() or error_occurred:
+                if running_component is not None and (
+                    not started.is_set() or error_occurred
+                ):
                     async with self._lock:
-                        rc = self._running.pop(component.name, None)
-                        if rc and cs:
+                        if self._running.get(component.name) is running_component:
+                            self._running.pop(component.name)
+                        if cs:
                             # Cancel the scope if we have it
                             cs.cancel()
 

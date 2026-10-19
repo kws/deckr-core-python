@@ -50,7 +50,7 @@ async def test_shared_resource_subscription_does_not_replay_stale_latest_after_d
             timeout_seconds=None,
         ):
             del timeout_seconds
-            lease = _lease(service_descriptor, generation=len(leases) + 1)
+            lease = _lease(service_descriptor, sequence=len(leases) + 1)
             _bind_fake_managed_service(lease, services)
             leases.append(lease)
             use_calls.append({"operations": frozenset(operations), "views": views})
@@ -109,7 +109,7 @@ async def test_shared_resource_subscription_replacement_sets_retained_union() ->
             timeout_seconds=None,
         ):
             del operations, views, timeout_seconds
-            lease = _lease(service_descriptor, generation=len(leases) + 1)
+            lease = _lease(service_descriptor, sequence=len(leases) + 1)
             _bind_fake_managed_service(lease, services)
             leases.append(lease)
             try:
@@ -187,7 +187,7 @@ async def test_shared_resource_subscription_replacement_reapplies_after_reconnec
             timeout_seconds=None,
         ):
             del operations, views, timeout_seconds
-            lease = _lease(service_descriptor, generation=len(leases) + 1)
+            lease = _lease(service_descriptor, sequence=len(leases) + 1)
             _bind_fake_managed_service(lease, services)
             leases.append(lease)
             try:
@@ -196,7 +196,7 @@ async def test_shared_resource_subscription_replacement_reapplies_after_reconnec
                 lease.closed = True
 
         async def watch_view(lease, _view):
-            if lease.contract.generation == 1:
+            if lease.contract.contract_id == "contract-1":
                 yield {"volume": 12}
                 raise ServiceUnavailable("contract_cancelled", "cancelled")
             yield {"volume": 13}
@@ -250,7 +250,7 @@ async def test_shared_resource_subscription_lease_monitor_reconnects_without_vie
             timeout_seconds=None,
         ):
             del operations, views, timeout_seconds
-            lease = _lease(service_descriptor, generation=len(leases) + 1)
+            lease = _lease(service_descriptor, sequence=len(leases) + 1)
             _bind_fake_managed_service(lease, services)
             if not leases:
                 lease.require_authority = first_refresh
@@ -261,7 +261,7 @@ async def test_shared_resource_subscription_lease_monitor_reconnects_without_vie
                 lease.closed = True
 
         async def watch_view(lease, _view):
-            yield {"volume": 12 if lease.contract.generation == 1 else 13}
+            yield {"volume": 12 if lease.contract.contract_id == "contract-1" else 13}
             await anyio.sleep_forever()
 
         services = SimpleNamespace(
@@ -280,7 +280,8 @@ async def test_shared_resource_subscription_lease_monitor_reconnects_without_vie
 
         assert first_ready.payload == {"volume": 12}
         assert second_ready.payload == {"volume": 13}
-        assert [lease.contract.generation for lease in leases] == [1, 2]
+        assert [lease.contract.generation for lease in leases] == [1, 1]
+        assert len({lease.contract.contract_id for lease in leases}) == 2
 
         await session.aclose()
         await manager.aclose()
@@ -305,7 +306,7 @@ async def test_shared_resource_subscription_active_request_requires_retained_res
             timeout_seconds=None,
         ):
             del operations, views, timeout_seconds
-            lease = _lease(service_descriptor, generation=len(leases) + 1)
+            lease = _lease(service_descriptor, sequence=len(leases) + 1)
             _bind_fake_managed_service(lease, services)
             leases.append(lease)
             try:
@@ -372,7 +373,7 @@ async def test_shared_resource_subscription_required_resource_must_be_retained()
             timeout_seconds=None,
         ):
             del timeout_seconds
-            lease = _lease(service_descriptor, generation=len(leases) + 1)
+            lease = _lease(service_descriptor, sequence=len(leases) + 1)
             _bind_fake_managed_service(lease, services)
             leases.append(lease)
             use_calls.append({"operations": frozenset(operations), "views": views})
@@ -459,7 +460,7 @@ async def test_shared_resource_subscription_unknown_and_closed_session_noops() -
             timeout_seconds=None,
         ):
             del operations, views, timeout_seconds
-            lease = _lease(service_descriptor, generation=len(leases) + 1)
+            lease = _lease(service_descriptor, sequence=len(leases) + 1)
             _bind_fake_managed_service(lease, services)
             leases.append(lease)
             try:
@@ -522,7 +523,7 @@ async def test_shared_resource_subscription_nonterminal_unavailable_does_not_rec
             timeout_seconds=None,
         ):
             del operations, views, timeout_seconds
-            lease = _lease(service_descriptor, generation=len(leases) + 1)
+            lease = _lease(service_descriptor, sequence=len(leases) + 1)
             _bind_fake_managed_service(lease, services)
             leases.append(lease)
             try:
@@ -714,13 +715,13 @@ def _message_from_view(
 def _lease(
     descriptor: ServiceDescriptor,
     *,
-    generation: int,
+    sequence: int,
 ) -> Any:
     return SimpleNamespace(
         descriptor=descriptor,
         contract=SimpleNamespace(
-            contract_id=f"contract-{generation}",
-            generation=generation,
+            contract_id=f"contract-{sequence}",
+            generation=1,
         ),
         closed=False,
         require_authority=AsyncMock(),

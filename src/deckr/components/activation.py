@@ -146,6 +146,8 @@ async def _activate_component_plan(
                 else None
             ),
             endpoint_for=_endpoint_opener_for_spec(deckr, spec),
+            hardware_for=deckr.hardware,
+            hardware_manager_for=deckr.hardware_manager,
         )
         component = spec.definition.factory(context)
         if not isinstance(component, Component):

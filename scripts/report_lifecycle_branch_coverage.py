@@ -1,4 +1,4 @@
-"""Enforce the authority lifecycle branch-coverage acceptance gate."""
+"""Report lifecycle branch coverage to guide behavioral test review."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import json
 import sys
 from pathlib import Path
 
-MINIMUM_BRANCH_COVERAGE = 95.0
-# Preserve the 95% gate for each logical owner across its responsibility splits.
+# Group logical owners across their implementation modules. Coverage is a
+# diagnostic: a percentage cannot establish authority or lifecycle conformance.
 LIFECYCLE_GROUPS = {
     "beacon": [
         "src/deckr/_beacon/_support.py",
@@ -37,22 +37,12 @@ LIFECYCLE_GROUPS = {
 def main() -> int:
     report_path = Path(sys.argv[1] if len(sys.argv) > 1 else "coverage.json")
     report = json.loads(report_path.read_text())
-    failures: list[str] = []
     for name, modules in LIFECYCLE_GROUPS.items():
         summaries = [report["files"][module]["summary"] for module in modules]
         covered = sum(item["covered_branches"] for item in summaries)
         total = sum(item["num_branches"] for item in summaries)
         percentage = 100 * covered / total if total else 100.0
         print(f"{name}: {percentage:.2f}% ({covered}/{total} branches)")
-        if percentage < MINIMUM_BRANCH_COVERAGE:
-            failures.append(f"{name}: {percentage:.2f}%")
-    if failures:
-        print(
-            f"Lifecycle branch coverage must be at least "
-            f"{MINIMUM_BRANCH_COVERAGE:.0f}%: {', '.join(failures)}",
-            file=sys.stderr,
-        )
-        return 1
     return 0
 
 

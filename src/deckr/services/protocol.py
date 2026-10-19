@@ -12,6 +12,7 @@ from pydantic import Field, field_serializer, field_validator
 
 from deckr.contracts.messages import service_address
 from deckr.contracts.models import DeckrModel, JsonObject, freeze_json, thaw_json
+from deckr.core.json_schema import local_validator
 from deckr.services._validation import (
     _JSON_SCHEMA_CONTRACT_KEYS,
     _require_json_wire_safe,
@@ -85,6 +86,7 @@ class ServicePayloadSchema(DeckrModel):
                 "service payload schema must include a JSON Schema contract keyword"
             )
         _require_json_wire_safe(value, field_name="service payload schema")
+        local_validator(thaw_json(value))
         return freeze_json(value)
 
     @field_serializer("json_schema")

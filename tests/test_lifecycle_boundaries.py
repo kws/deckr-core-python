@@ -13,6 +13,18 @@ _WatchBoundary = tuple[Path, str, str, str]
 # than silently evading a receiver-name pattern.
 _APPROVED_AUTHORITY_STATE_BOUNDARIES: dict[_WatchBoundary, str] = {
     (
+        Path("src/deckr/hardware/_state.py"),
+        "HardwareStateChannel.watch",
+        "self._bus",
+        "subscribe",
+    ): "Bounded coalesced hardware state with initial/final snapshots",
+    (
+        Path("src/deckr/hardware/managed_claim.py"),
+        "ManagedHardwareClaim._watch_agreement",
+        "self._agreement",
+        "watch_state",
+    ): "Claim-owned public Concord lifetime; no raw authority store watch",
+    (
         Path("src/deckr/_beacon/_view.py"),
         "BeaconView.run",
         "self.source",
@@ -129,6 +141,74 @@ _APPROVED_AUTHORITY_STATE_BOUNDARIES: dict[_WatchBoundary, str] = {
 # authority alias cannot bypass the guard merely by choosing an unfamiliar name.
 _APPROVED_OTHER_WATCH_BOUNDARIES = Counter[_WatchBoundary](
     {
+        # One directory watch per runtime, one message subscription per endpoint,
+        # and context-owned observers over the shared materialized/state views.
+        (
+            Path("src/deckr/hardware/_state.py"),
+            "HardwareStateChannel.wait_for",
+            "self",
+            "watch",
+        ): 1,
+        (
+            Path("src/deckr/hardware/client_runtime.py"),
+            "HardwareMessageRouter._run",
+            "self.endpoint",
+            "subscribe",
+        ): 1,
+        (
+            Path("src/deckr/hardware/discovery.py"),
+            "HardwareDirectory._run",
+            "self._beacon",
+            "watch",
+        ): 1,
+        (
+            Path("src/deckr/hardware/discovery.py"),
+            "HardwareDirectory.wait_for_device",
+            "self",
+            "watch_state",
+        ): 1,
+        (
+            Path("src/deckr/hardware/discovery.py"),
+            "HardwareDirectory.watch_state",
+            "self._state",
+            "watch",
+        ): 1,
+        (
+            Path("src/deckr/hardware/managed_claim.py"),
+            "ManagedHardwareClaim.watch_state",
+            "self._state",
+            "watch",
+        ): 1,
+        (
+            Path("src/deckr/hardware/manager.py"),
+            "HardwareManagerRuntime.watch_state",
+            "self._observer.channel",
+            "watch",
+        ): 1,
+        (
+            Path("src/deckr/hardware/manager_state.py"),
+            "HardwareManagerObserver.discovery_loop",
+            "self.runtime.beacon",
+            "watch",
+        ): 1,
+        (
+            Path("src/deckr/hardware/recovery.py"),
+            "ManagedHardwareUse._next_spec",
+            "self._client.directory",
+            "watch_state",
+        ): 1,
+        (
+            Path("src/deckr/hardware/recovery.py"),
+            "ManagedHardwareUse._run",
+            "claim",
+            "watch_state",
+        ): 1,
+        (
+            Path("src/deckr/hardware/recovery.py"),
+            "ManagedHardwareUse.watch_state",
+            "self._state",
+            "watch",
+        ): 1,
         (
             Path("src/deckr/_beacon/_directory.py"),
             "BeaconDirectory._event_loop",

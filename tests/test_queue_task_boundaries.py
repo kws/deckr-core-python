@@ -39,6 +39,28 @@ class _TemporaryBoundary:
 # Keeping exact semantic call sites here makes accidental replacement with an
 # unbounded registry or queue visible in the same audit as temporary debt.
 _PERMANENT_BOUNDED_BOUNDARIES: dict[_Boundary, int] = {
+    # At most 256 runtime clients; routers are shared per endpoint and removed
+    # when their last client exits. Endpoint admission caps claims (including
+    # pending negotiations) at 64. Each active consumer has a finite event FIFO;
+    # overflow revokes its claim instead of dropping or coalescing input.
+    (
+        Path("src/deckr/hardware/client_runtime.py"),
+        "HardwareRuntime.__init__",
+        "self._routers",
+        "task_or_reply_route_map",
+    ): 1,
+    (
+        Path("src/deckr/hardware/client_runtime.py"),
+        "HardwareMessageRouter.__init__",
+        "self._claims",
+        "task_or_reply_route_map",
+    ): 1,
+    (
+        Path("src/deckr/hardware/managed_claim.py"),
+        "ManagedHardwareClaim.events",
+        "send, receive",
+        "bounded_memory_stream",
+    ): 1,
     # Released ownership is pruned against the open-contract snapshot at bootstrap.
     (
         Path("src/deckr/_concord/_owner.py"),

@@ -857,3 +857,14 @@ def test_action_body_for_type_rejects_settings_messages(message_type: str) -> No
                 "settings": {"title": "removed"},
             },
         )
+
+
+@pytest.mark.parametrize(
+    "family",
+    ["org.example.custom\n", " dev.deckr.input.button", "org.example.custom\t"],
+)
+def test_capability_selector_wire_identity_is_not_whitespace_normalized(family):
+    with pytest.raises(ValidationError, match="whitespace"):
+        CapabilityRequirementSelector.from_wire(
+            {"family": family, "type": "activation"}
+        )

@@ -4,7 +4,7 @@ import copy
 import json
 
 import pytest
-from descriptor_fixtures import descriptor_payloads
+from descriptor_fixtures import descriptor_payloads, stream_deck_bitmap_grid
 from pydantic import ValidationError
 
 from deckr.hardware.descriptors import (
@@ -236,3 +236,15 @@ def test_capability_schema_requires_contract_keywords() -> None:
                 "schema": {"description": "not enough"},
             }
         )
+
+
+@pytest.mark.parametrize("field", ["family", "capabilityId", "type"])
+@pytest.mark.parametrize("whitespace", [" ", "\n", "\t"])
+def test_capability_identifiers_are_not_normalized_on_the_wire(field, whitespace):
+    from deckr.hardware import CapabilityDescriptor
+
+    payload = stream_deck_bitmap_grid()["controls"][0]["outputCapabilities"][0]
+    assert CapabilityDescriptor.from_wire(payload).capability_id == "raster.bitmap"
+    payload[field] += whitespace
+    with pytest.raises(ValidationError, match="whitespace"):
+        CapabilityDescriptor.from_wire(payload)

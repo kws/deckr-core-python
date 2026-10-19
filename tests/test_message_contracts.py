@@ -252,3 +252,27 @@ def test_expired_message_is_not_deliverable() -> None:
         endpoint_session_id="service-session",
         contract=CORE_LANE_CONTRACTS[SERVICES_LANE],
     )
+
+
+@pytest.mark.parametrize("field", ["messageId", "createdAt"])
+def test_wire_messages_cannot_generate_missing_identity_or_creation_time(field):
+    message = _valid_service_message()
+    payload = message.to_dict()
+    assert DeckrMessage.from_wire(payload) == message
+    payload.pop(field)
+    with pytest.raises(ValueError, match="require messageId and createdAt"):
+        DeckrMessage.from_wire(payload)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"messageId": ""},
+        {"messageId": "   "},
+        {"createdAt": "2026-10-19T12:00:00"},
+        {"expiresAt": "2026-10-19T12:00:00"},
+    ],
+)
+def test_wire_messages_reject_empty_ids_and_ambiguous_timestamps(changes):
+    with pytest.raises(ValueError):
+        DeckrMessage.from_wire(_valid_service_message().to_dict() | changes)

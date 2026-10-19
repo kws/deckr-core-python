@@ -47,34 +47,11 @@ async def _manager_context():
             await manager.stop()
             tg.cancel_scope.cancel()
 
-    # Suppress any ExceptionGroup that might have been raised from component crashes
-    # This allows tests to complete even if components crashed during execution
-
-
-class ManagerContext:
-    """Async context manager for ComponentManager lifecycle in tests."""
-
-    def __init__(self):
-        self._cm = _manager_context()
-
-    async def __aenter__(self):
-        """Enter the context manager and start the ComponentManager."""
-        return await self._cm.__aenter__()
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Exit the context manager and clean up resources."""
-        try:
-            return await self._cm.__aexit__(exc_type, exc_val, exc_tb)
-        except BaseExceptionGroup:
-            # Suppress ExceptionGroups from component crashes during cleanup
-            # These are expected in some tests and shouldn't fail the test
-            return True  # Suppress the exception
-
 
 @pytest_asyncio.fixture
 def manager_context():
     """Fixture that provides a ComponentManager in a task group with proper cleanup."""
-    return ManagerContext()
+    return _manager_context()
 
 
 # Test component implementations
@@ -312,45 +289,49 @@ class TestComponentManagerRaceConditions:
             async with anyio.create_task_group() as test_tg:
                 test_tg.start_soon(add_comp1)
                 test_tg.start_soon(add_comp2)
-            await anyio.sleep(0.1)
+            await manager.wait_for_state("test1", ComponentState.RUNNING, timeout=1)
 
             # Only one should be registered
             components = manager.list_components()
             assert len(components) == 1
             assert "test1" in components
+            assert sum((comp1.start_called, comp2.start_called)) == 1
+            # A skipped duplicate must also release the host event loop.
+            await manager.add_component(MockComponent(name="independent"))
+            await manager.wait_for_state(
+                "independent", ComponentState.RUNNING, timeout=1
+            )
+            assert manager.get_component_state("test1") == ComponentState.RUNNING
 
     @pytest.mark.asyncio
     async def test_add_while_removing(self, manager_context):
-        """Test adding component while it's being removed."""
-        async with manager_context as (manager, tg):
-            comp1 = MockComponent(name="test1", stop_delay=0.2)
-            comp2 = MockComponent(name="test1")
+        stop_started, release_stop = anyio.Event(), anyio.Event()
 
-            # Add first component
-            await manager.add_component(comp1)
-            await manager.wait_for_state("test1", ComponentState.RUNNING, timeout=1.0)
+        class SlowStopComponent(MockComponent):
+            async def stop(self):
+                stop_started.set()
+                await release_stop.wait()
+                await super().stop()
 
-            # Start removal (slow)
-            async def remove():
-                await manager.remove_component(comp1)
-
-            # Try to add while removing
-            async def add():
-                await anyio.sleep(0.05)  # Wait a bit
-                try:
-                    await manager.add_component(comp2)
-                except RuntimeError:
-                    pass  # May fail if still removing
-
-            async with anyio.create_task_group() as test_tg:
-                test_tg.start_soon(remove)
-                test_tg.start_soon(add)
-            await anyio.sleep(0.3)
-
-            # Final state should be consistent
-            state = manager.get_component_state("test1")
-            # Either removed or one is running
-            assert state is None or state == ComponentState.RUNNING
+        async with manager_context as (manager, _tg):
+            first = SlowStopComponent(name="test1")
+            replacement = MockComponent(name="test1")
+            await manager.add_component(first)
+            await manager.wait_for_state("test1", ComponentState.RUNNING, timeout=1)
+            await manager.remove_component(first)
+            try:
+                with anyio.fail_after(1):
+                    await stop_started.wait()
+                with pytest.raises(RuntimeError, match="already exists"):
+                    await manager.add_component(replacement)
+                assert not replacement.start_called
+            finally:
+                release_stop.set()
+            await wait_for_removed(manager, "test1")
+            assert first.stop_called
+            await manager.add_component(replacement)
+            await manager.wait_for_state("test1", ComponentState.RUNNING, timeout=1)
+            assert replacement.start_called
 
 
 class TestComponentManagerStateManagement:
@@ -388,20 +369,20 @@ class TestComponentManagerStateManagement:
             assert "comp2" in components
 
     @pytest.mark.asyncio
-    async def test_failed_component_state(self, manager_context):
-        """Test that failed components are tracked correctly."""
-        async with manager_context as (manager, tg):
-            component = MockComponent(
-                name="test1", start_should_raise=RuntimeError("Failed!")
-            )
-
-            # Add component that will fail
-            await manager.add_component(component)
-            await anyio.sleep(0.2)
-
-            # Component should be cleaned up (failed components are removed)
-            state = manager.get_component_state("test1")
-            assert state is None
+    async def test_component_start_failure_propagates_and_cleans_registry(
+        self, manager_context
+    ):
+        failure = RuntimeError("Failed!")
+        with pytest.RaisesGroup(
+            pytest.RaisesExc(RuntimeError, match="^Failed!$"), flatten_subgroups=True
+        ):
+            async with manager_context as (manager, _tg):
+                await manager.add_component(
+                    MockComponent(name="test1", start_should_raise=failure)
+                )
+                with anyio.fail_after(1):
+                    await anyio.sleep_forever()
+        assert manager.get_component_state("test1") is None
 
 
 class TestComponentManagerPublicSurface:

@@ -270,8 +270,9 @@ class MemoryJsonKvBucket:
                 yield receive
                 task_group.cancel_scope.cancel()
         finally:
-            async with self._lock:
-                self._watchers.pop(send, None)
+            with anyio.CancelScope(shield=True):
+                async with self._lock:
+                    self._watchers.pop(send, None)
 
     async def _write(
         self,

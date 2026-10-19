@@ -24,6 +24,7 @@ from deckr.services.messages import (
     ServiceMessageBody,
     service_body,
 )
+from deckr.services.payload_validation import validated_service_body
 from deckr.services.runtime import (
     ServiceManagedContractContext,
     ServiceProtocol,
@@ -73,14 +74,15 @@ class ManagedServiceContract:
             recipient_session_id=context.consumer_session_id,
             subject=subject or _service_message_subject(context, name),
             message_type=SERVICE_MESSAGE,
-            body=ServiceMessageBody(
+            body=validated_service_body(
+                definition,
                 serviceNamespace=context.service_namespace,
                 name=name,
                 intent=definition.intent,
                 exchangePattern=definition.exchange_pattern,
                 params=dict(params or {}),
                 event=dict(event) if event is not None else None,
-            ).to_dict(),
+            ),
             contract=context.contract,
         )
 
@@ -105,13 +107,14 @@ class ManagedServiceContract:
             recipient_session_id=context.consumer_session_id,
             subject=_service_message_subject(context, name),
             message_type=SERVICE_MESSAGE,
-            body=ServiceMessageBody(
+            body=validated_service_body(
+                definition,
                 serviceNamespace=context.service_namespace,
                 name=name,
                 intent=definition.intent,
                 exchangePattern=definition.exchange_pattern,
                 params=dict(params or {}),
-            ).to_dict(),
+            ),
             **({"timeout": timeout_seconds} if timeout_seconds is not None else {}),
             contract=context.contract,
         )

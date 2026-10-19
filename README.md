@@ -17,7 +17,7 @@ They do not replace the reference repository’s conformance vectors.
 
 - [Reference overview](https://github.com/kws/deckr#readme)
 - [Schema consumption](https://github.com/kws/deckr/blob/main/docs/schemas.md)
-- [Architecture](https://github.com/kws/deckr/blob/main/docs/runtime-architecture.md)
+- [Architecture](https://github.com/kws/deckr/blob/main/docs/deckr-architecture.md)
 - [Beacon](https://github.com/kws/deckr/blob/main/docs/beacon.md),
   [Concord](https://github.com/kws/deckr/blob/main/docs/concord.md), and
   [NATS](https://github.com/kws/deckr/blob/main/docs/nats.md)
@@ -60,12 +60,20 @@ uv run ruff check .
 uv run ruff format --check .
 uv run lint-imports
 uv run pytest --cov-branch --cov-report=json:coverage.json
-uv run python scripts/check_lifecycle_branch_coverage.py coverage.json
+uv run python scripts/report_lifecycle_branch_coverage.py coverage.json
 ```
 
 Focused protocol tests can use `MemoryJsonKvBucket`, `ConcordRuntimeHarness`,
 and `ConcordMaintenanceHarness` from `deckr.testing`. Use the runtime harness
 for ordinary Concord tests and the maintenance harness for maintenance coverage.
+
+Tests should assert observable behavior: accepted or rejected messages, stored
+records, authority transitions, delivered values, and completed cleanup. Use
+controlled faults and synchronization to exercise races. Architecture and public
+API boundary checks are also useful. Avoid test-local protocol models, internal
+call-count scaffolding without a behavioral outcome, and exception suppression
+that can hide assertion failures. Branch coverage is reported as a diagnostic,
+not a pass/fail percentage; it does not establish specification conformance.
 
 Build the Python wheel and source distribution:
 
@@ -135,6 +143,92 @@ Real-broker tests are enabled by `uv sync --extra supervised-nats`, or by settin
 `NATS_SERVER_BINARY` to a local server executable. They run a temporary authenticated
 loopback broker and verify replay, idle heartbeats, and consumer loss. CI installs
 the extra so these tests run there.
+
+## Managed hardware
+
+`Deckr.hardware(endpoint)` creates a `DeckrHardware` context for a controller
+endpoint. `ComponentContext.hardware(endpoint)` uses the same host factory.
+Clients in one runtime share a typed `HardwareDirectory`; clients using the same
+`EndpointSession` also share one hardware message subscription. Close clients
+before their endpoint. Runtime shutdown closes clients before Beacon and Concord.
+
+Selection remains application policy. Directory candidates contain the exact
+manager endpoint/session, device reference, immutable descriptor, and advertised
+capacity. Capacity is advisory: only a valid Concord agreement authorizes work.
+`directory.state.current` distinguishes stale discovery from a current empty
+result. `directory.watch_state()` includes an initial snapshot and a final closed
+snapshot; `directory.candidates()` rejects stale queries. Discovery loss alone
+does not revoke an existing hardware agreement.
+
+This example uses an already-entered `Deckr` runtime and a device advertising a
+`raster.bitmap` capability on `key.0.0`:
+
+```python
+from deckr.hardware import HardwareClaimSpec
+from deckr.runtime import Deckr
+
+
+async def use_device(deckr: Deckr, manager_id: str, device_id: str) -> None:
+    async with (
+        deckr.endpoint("controller:main") as endpoint,
+        deckr.hardware(endpoint) as hardware,
+    ):
+        selected = await hardware.wait_for_device(
+            lambda candidate: (
+                candidate.manager_endpoint.endpoint_id == manager_id
+                and candidate.device_ref.device_id == device_id
+            ),
+            timeout_seconds=10,
+        )
+        async with hardware.claim(HardwareClaimSpec((selected,))) as claim:
+            await claim.command(
+                device_id, "raster.bitmap", "clear", control_id="key.0.0"
+            )
+            async with claim.events() as events:
+                async for event in events:
+                    print(event.body)
+```
+
+A `HardwareClaimSpec` can group several devices from one manager session. Entry
+waits for authority, with a default ten-second negotiation timeout. Each
+`ManagedHardwareClaim` owns exactly one public Concord proposal context and its
+cleanup. Its `state`, `watch_state()`, and `wait_for_state(predicate)` expose
+immutable `HardwareClaimState` snapshots, including the contract pointer, local
+authority, descriptors, and structured failure. Watches coalesce current state.
+
+`command()` validates the target, supported operation, and descriptor command
+schema, then publishes under the exact agreement and endpoint sessions. Its return
+value is the published envelope, not an execution acknowledgement. `request_state()`
+also validates the returned scope and value and rechecks authority after waiting.
+Descriptor JSON Schemas are validated locally using `jsonschema`; embedded/local
+references are supported and remote references are never fetched.
+
+`events()` delivers validated input and state changes in arrival order to one
+consumer. Its queue defaults to 64 events (`event_buffer_size`, range 1–4096).
+Overflow revokes the claim with `HardwareUnavailable.code == "input_overflow"`;
+discrete input is never coalesced. A consumer wakes on authority loss even when
+idle. Closing an event context discards its backlog; opening another starts a new
+stream. Clients and routers admit at most 64 pending or active claims per endpoint,
+and a runtime admits at most 256 clients.
+
+Recovery is explicit: `hardware.use(spec, recover=same_hardware)` returns a
+`ManagedHardwareUse` that negotiates successors with bounded retry backoff.
+Import `same_hardware` from `deckr.hardware`; it selects the same manager and
+device identities with materially unchanged descriptors, and declines ambiguous
+sessions. A custom `HardwareRecoveryPolicy` may return a new spec or `None` to
+wait for another directory update. Each successor has a fresh opaque contract ID
+and generation 1. Old claim handles remain invalid, commands are never replayed,
+and event streams belong to one agreement. Observe `use.watch_state()` and reopen
+`use.claim.events()` after establishing application routing for a successor.
+Routing, rendering, action bindings, persistence, and broader device-selection
+policy remain in the controller.
+
+The existing `hardware_manager(...)` factory remains the driver entry point.
+`HardwareManagerRuntime.state`, `watch_state()`, and `wait_for_state(predicate)`
+now expose immutable inventory and live claims, discovery currentness,
+advertisement publication status, authority currentness, and structured failures.
+Claim loss is observable before driver reset callbacks or remote cleanup finish.
+The component factory delegates to the host to preserve worker ownership.
 
 ## Releases
 

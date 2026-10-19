@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 import anyio
 
 if TYPE_CHECKING:
-    from deckr.hardware import DeviceDescriptor, HardwareManagerContext
+    from deckr.hardware import DeckrHardware, DeviceDescriptor, HardwareManagerContext
+    from deckr.hardware.client_runtime import HardwareRuntime
     from deckr.services import (
         DeckrServices,
         ServiceBackendStatus,
@@ -69,6 +70,7 @@ class Deckr:
         self._task_group: anyio.abc.TaskGroup | None = None
         self._beacon: Beacon | None = None
         self._concord: Concord | None = None
+        self._hardware: HardwareRuntime | None = None
 
     @property
     def lane_contracts(self) -> MessageContractRegistry:
@@ -191,6 +193,18 @@ class Deckr:
             labels=labels,
         )
 
+    def hardware(self, endpoint: EndpointSession) -> DeckrHardware:
+        """Create an endpoint-owned client using this runtime's shared directory."""
+        if self._task_group is None or self._beacon is None or self._concord is None:
+            raise RuntimeError("Deckr runtime does not provide hardware support")
+        if self._hardware is None:
+            from deckr.hardware.client_runtime import HardwareRuntime
+
+            self._hardware = HardwareRuntime(
+                self._beacon, self._concord, self._task_group
+            )
+        return self._hardware.client(endpoint)
+
     def hardware_manager(
         self,
         endpoint: EndpointSession,
@@ -252,6 +266,11 @@ class Deckr:
 
         if self._task_group is not None:
             self._task_group.cancel_scope.shield = True
+            if self._hardware is not None:
+                try:
+                    await self._hardware.aclose()
+                except BaseException as err:
+                    cleanup_errors.append(err)
             if self._beacon is not None:
                 try:
                     await self._beacon.aclose()
@@ -294,6 +313,7 @@ class Deckr:
                     except BaseException as err:
                         cleanup_errors.append(err)
             finally:
+                self._hardware = None
                 self._beacon = None
                 self._concord = None
                 self._task_group = None

@@ -42,13 +42,14 @@ def _descriptor(
 ) -> DeviceDescriptor:
     payload = stream_deck_bitmap_grid()
     payload["deviceId"] = device_id
+    payload["controls"][0]["outputCapabilities"][0]["access"].append("readable")
     if fingerprint is not None:
         payload["fingerprint"] = fingerprint
     return DeviceDescriptor.model_validate(payload)
 
 
 def _replacement_descriptor(change: str) -> DeviceDescriptor:
-    payload = stream_deck_bitmap_grid()
+    payload = _descriptor().model_dump(by_alias=True, exclude_none=True, mode="json")
     if change == "fingerprint":
         payload["fingerprint"] = "usb:0fd9:0063:stream-deck-mini-replacement"
     elif change == "control":
@@ -148,7 +149,7 @@ def _capability_state_request_message(
     manager_id: str = "manager-main",
     device_id: str = "stream-deck-mini",
     capability_id: str = "raster.bitmap",
-    control_id: str | None = "0,0",
+    control_id: str | None = "key.0.0",
     state_type: str | None = "bitmap",
     recipient_session_id: str | None = None,
     contract=None,
@@ -367,10 +368,10 @@ async def test_runtime_attaches_manager_token_and_routes_live_claim_input() -> N
                 sender_session_id=runtime.endpoint.session_id,
                 device_id="stream-deck-mini",
                 fingerprint=_descriptor().fingerprint,
-                control_id="0,0",
-                capability_id="raster.bitmap",
-                event_type="press",
-                value={"eventType": "press"},
+                control_id="key.0.0",
+                capability_id="button.momentary",
+                event_type="down",
+                value={"eventType": "down"},
             )
         )
         routed = deckr._message_bus.publish.call_args.args[0]
@@ -382,7 +383,7 @@ async def test_runtime_attaches_manager_token_and_routes_live_claim_input() -> N
             sender_session_id=controller_endpoint.session_id,
             manager_id="manager-main",
             device_id="stream-deck-mini",
-            control_id="0,0",
+            control_id="key.0.0",
             capability_id="raster.bitmap",
             command_type="clear",
             contract=_contract_pointer(contract),
@@ -504,7 +505,7 @@ async def test_start_subscription_and_stop_withdraw_beacon_and_authority() -> No
                     sender_session_id=controller_endpoint.session_id,
                     manager_id="manager-main",
                     device_id="stream-deck-mini",
-                    control_id="0,0",
+                    control_id="key.0.0",
                     capability_id="raster.bitmap",
                     command_type="clear",
                     contract=_contract_pointer(contract),
@@ -564,7 +565,7 @@ async def test_command_rejection_wire_replies_match_runtime_contract() -> None:
             sender_session_id=controller_endpoint.session_id,
             manager_id="manager-main",
             device_id="stream-deck-mini",
-            control_id="0,0",
+            control_id="key.0.0",
             capability_id="raster.bitmap",
             command_type="unsupported",
             contract=_contract_pointer(contract),
@@ -887,7 +888,7 @@ async def test_cached_hardware_claim_cannot_authorize_while_reconciliation_is_bl
                 sender_session_id=controller.session_id,
                 manager_id="manager-main",
                 device_id="stream-deck-mini",
-                control_id="0,0",
+                control_id="key.0.0",
                 capability_id="raster.bitmap",
                 command_type="clear",
                 contract=_contract_pointer(contract),
@@ -901,10 +902,10 @@ async def test_cached_hardware_claim_cannot_authorize_while_reconciliation_is_bl
                     sender_session_id=runtime.endpoint.session_id,
                     device_id="stream-deck-mini",
                     fingerprint=_descriptor().fingerprint,
-                    control_id="0,0",
-                    capability_id="raster.bitmap",
-                    event_type="press",
-                    value={"eventType": "press"},
+                    control_id="key.0.0",
+                    capability_id="button.momentary",
+                    event_type="down",
+                    value={"eventType": "down"},
                 )
             )
             deckr._message_bus.publish.assert_not_awaited()

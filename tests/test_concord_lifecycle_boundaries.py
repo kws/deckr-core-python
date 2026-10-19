@@ -98,6 +98,25 @@ _APPROVED_MANAGED_CANCEL_CALLS: Counter[_CallSite] = Counter(
     }
 )
 
+# JSON Schema validation is unrelated to Concord authority validation. Keep the
+# exact call site visible rather than exempting a receiver name or a whole module.
+_APPROVED_NON_PROTOCOL_CALLS: Counter[_CallSite] = Counter(
+    {
+        (
+            Path("src/deckr/hardware/validation.py"),
+            "validate_payload",
+            "local_validator",
+            "validate",
+        ): 1,
+        (
+            Path("src/deckr/services/payload_validation.py"),
+            "validate_service_payloads",
+            "local_validator",
+            "validate",
+        ): 1,
+    }
+)
+
 
 def test_production_code_uses_managed_lifecycle_routes() -> None:
     repository = Path(__file__).resolve().parents[1]
@@ -121,7 +140,9 @@ def test_production_code_uses_managed_lifecycle_routes() -> None:
         {
             callsite: count
             for callsite, count in (
-                _APPROVED_CORE_LIFECYCLE_CALLS + _APPROVED_MANAGED_CANCEL_CALLS
+                _APPROVED_CORE_LIFECYCLE_CALLS
+                + _APPROVED_MANAGED_CANCEL_CALLS
+                + _APPROVED_NON_PROTOCOL_CALLS
             ).items()
             if callsite[0] in available_paths
         }

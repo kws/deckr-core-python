@@ -502,20 +502,25 @@ class DeckrServices:
         return manager
 
     async def aclose(self) -> None:
-        for manager in tuple(self._shared_managers.values()):
-            aclose = getattr(manager, "aclose", None)
-            if callable(aclose):
-                await aclose()
-        self._shared_managers.clear()
-        for lease in tuple(self._active_service_use_leases.values()):
-            await self._close_active_service_use_lease(
-                lease,
-                reason="service_use_closed",
-            )
-        for directory in tuple(self._directories.values()):
-            await directory.aclose()
-        self._directories.clear()
-        self._view_stores.clear()
+        with anyio.CancelScope(shield=True):
+            try:
+                for manager in tuple(self._shared_managers.values()):
+                    aclose = getattr(manager, "aclose", None)
+                    if callable(aclose):
+                        await aclose()
+                self._shared_managers.clear()
+                for lease in tuple(self._active_service_use_leases.values()):
+                    await self._close_active_service_use_lease(
+                        lease,
+                        reason="service_use_closed",
+                    )
+            finally:
+                for directory in tuple(self._directories.values()):
+                    await directory.aclose()
+                self._directories.clear()
+                for store in tuple(self._view_stores.values()):
+                    await store.aclose()
+                self._view_stores.clear()
 
     async def _close_active_service_use_lease(
         self,

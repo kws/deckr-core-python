@@ -35,7 +35,7 @@ from deckr.concord import (
 from deckr.contracts.authority import ContractPointer
 from deckr.contracts.messages import controller_address, hardware_manager_address
 from deckr.substrates.nats_kv import KvConflict, KvUnavailable
-from deckr.testing import MemoryJsonKvBucket
+from deckr.testing import LifecycleFaultHarness, LifecycleFaultPhase, MemoryJsonKvBucket
 
 PROFILE = "dev.deckr.test.lifecycle-regression.v1"
 CONTROLLER = controller_address("controller-main")
@@ -733,7 +733,10 @@ def _agreement_spec(
 
 
 @pytest.mark.asyncio
-async def test_beacon_heartbeat_uses_jittered_bucket_ttl(monkeypatch) -> None:
+@pytest.mark.parametrize("failed_refresh", [False, True])
+async def test_beacon_heartbeat_uses_jittered_bucket_ttl(
+    monkeypatch, failed_refresh
+) -> None:
     samples: list[tuple[float, float]] = []
 
     def sample(lower: float, upper: float) -> float:
@@ -741,7 +744,9 @@ async def test_beacon_heartbeat_uses_jittered_bucket_ttl(monkeypatch) -> None:
         return 0.01
 
     monkeypatch.setattr(random, "uniform", sample)
-    raw = MemoryJsonKvBucket(bucket="beacon", ttl_seconds=1)
+    raw = LifecycleFaultHarness(bucket="beacon", ttl_seconds=1)
+    if failed_refresh:
+        raw.fail_next("update", phase=LifecycleFaultPhase.BEFORE)
 
     async with (
         _running_beacon(raw) as beacon,

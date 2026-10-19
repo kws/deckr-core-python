@@ -15,13 +15,11 @@ from deckr.concord import (
 from deckr.concord_maintenance import DEFAULT_CONCORD_MAINTENANCE_BUCKET_NAME
 from deckr.contracts.lanes import (
     DEFAULT_MESSAGE_CONTRACT_REGISTRY,
-    SERVICE_LANE_CONTRACT,
     MessageContract,
     MessageContractRegistry,
 )
-from deckr.contracts.messages import SERVICES_LANE, service_address
+from deckr.contracts.messages import SERVICES_LANE
 from deckr.runtime import Deckr
-from deckr.services import DeckrServices
 from deckr.substrates.nats import NatsSubstrate
 from deckr.substrates.supervised_nats import SupervisedNatsSubstrate
 
@@ -33,35 +31,6 @@ class _ClosableMessageBus:
     async def aclose(self) -> None:
         await anyio.sleep(0)
         self.closed = True
-
-
-@pytest.mark.asyncio
-async def test_deckr_services_context_builds_with_default_core_lanes() -> None:
-    async with (
-        mock_deckr() as deckr,
-        deckr.endpoint(
-            service_address("action-runtime.python-dev.deckr.demo")
-        ) as endpoint,
-        deckr.services(endpoint) as services,
-    ):
-        assert isinstance(services, DeckrServices)
-
-
-@pytest.mark.asyncio
-async def test_deckr_services_context_builds_managed_client() -> None:
-    async with (
-        mock_deckr(
-            lane_contracts=(SERVICE_LANE_CONTRACT,),
-            lanes=(SERVICES_LANE,),
-        ) as deckr,
-        deckr.endpoint(
-            service_address("action-runtime.python-dev.deckr.demo")
-        ) as endpoint,
-        deckr.services(endpoint) as services,
-    ):
-        assert isinstance(services, DeckrServices)
-        assert not hasattr(services, "beacon")
-        assert not hasattr(services, "concord")
 
 
 @pytest.mark.asyncio

@@ -62,6 +62,7 @@ class HardwareManagerContext:
             return
         try:
             with anyio.CancelScope(shield=True):
+                await self.runtime._begin_close()
                 self._tasks.cancel()
                 await self._tasks.aclose()
                 await self.runtime.stop()

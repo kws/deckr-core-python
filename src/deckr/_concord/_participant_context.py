@@ -154,6 +154,9 @@ class ConcordParticipant:
         managed = self.managed_contract(pointer)
         if managed is None:
             raise ValueError("Concord participant does not manage that contract")
+        # Domain consent ends locally before cancellation can wait on storage.
+        # The lease keeps its exact token handle solely for guarded cleanup.
+        lease = await self._attachments._relinquish_pointer(managed.contract.key)
         try:
             return await self._store.cancel(
                 managed.contract,
@@ -161,11 +164,6 @@ class ConcordParticipant:
                 reason=reason,
             )
         except (ConcordConflict, ConcordUnavailable) as exc:
-            async with self._resources.state_bus.lock:
-                lease = self._resources.leases.get(managed.contract.key)
-                if lease is not None:
-                    lease.relinquish_local_authority()
-                self._resources.managed.pop(managed.contract.key, None)
             await self._attachments._retain_cleanup(
                 managed.contract,
                 error=exc,
