@@ -11,27 +11,19 @@ _Boundary = tuple[Path, str, str, str]
 
 _STATE_STREAM_OWNERS = {
     (
-        Path("deckr/src/deckr/core/util/anyio.py"),
+        Path("src/deckr/core/util/anyio.py"),
         "CoalescedStateBroadcaster",
     ),
-    (Path("deckr/src/deckr/substrates/nats_kv.py"), "NatsKvMaterializedBucket"),
-    (Path("deckr/src/deckr/beacon.py"), "Beacon"),
-    (Path("deckr/src/deckr/beacon.py"), "_BeaconSubscriber"),
-    (Path("deckr/src/deckr/concord.py"), "Concord"),
-    (Path("deckr/src/deckr/concord.py"), "_ConcordSubscriber"),
-    (Path("deckr/src/deckr/_concord/_participant.py"), "ConcordParticipant"),
-    (Path("deckr/src/deckr/services/views.py"), "ServiceViewStore"),
+    (Path("src/deckr/substrates/nats_kv.py"), "NatsKvMaterializedBucket"),
+    (Path("src/deckr/beacon.py"), "Beacon"),
+    (Path("src/deckr/beacon.py"), "_BeaconSubscriber"),
+    (Path("src/deckr/concord.py"), "Concord"),
+    (Path("src/deckr/concord.py"), "_ConcordSubscriber"),
+    (Path("src/deckr/_concord/_participant.py"), "ConcordParticipant"),
+    (Path("src/deckr/services/views.py"), "ServiceViewStore"),
     (
-        Path("deckr/src/deckr/services/subscriptions.py"),
+        Path("src/deckr/services/subscriptions.py"),
         "SharedResourceSubscriptionManager",
-    ),
-    (
-        Path("deckr-controller/src/deckr/controller/config/_materialized.py"),
-        "MaterializedDeviceConfigService",
-    ),
-    (
-        Path("deckr-controller/src/deckr/controller/config/_service.py"),
-        "FileBackedDeviceConfigService",
     ),
 }
 
@@ -48,81 +40,63 @@ class _TemporaryBoundary:
 # unbounded registry or queue visible in the same audit as temporary debt.
 _PERMANENT_BOUNDED_BOUNDARIES: dict[_Boundary, int] = {
     (
-        Path("deckr/src/deckr/_concord/_participant.py"),
+        Path("src/deckr/_concord/_participant.py"),
         "ConcordParticipant.__init__",
         "self._managed",
         "task_or_reply_route_map",
     ): 1,
     (
-        Path("deckr/src/deckr/_concord/_participant.py"),
+        Path("src/deckr/_concord/_participant.py"),
         "ConcordParticipant.__init__",
         "self._leases",
         "task_or_reply_route_map",
     ): 1,
     (
-        Path("deckr/src/deckr/_concord/_participant.py"),
+        Path("src/deckr/_concord/_participant.py"),
         "ConcordParticipant.__init__",
         "self._cleanup_leases",
         "task_or_reply_route_map",
     ): 1,
     (
-        Path("deckr/src/deckr/_concord/_participant.py"),
+        Path("src/deckr/_concord/_participant.py"),
         "ConcordParticipant.__init__",
         "self._cleanup_wakeups",
         "task_or_reply_route_map",
     ): 1,
     (
-        Path("deckr/src/deckr/core/util/anyio.py"),
+        Path("src/deckr/core/util/anyio.py"),
         "_CancellationSafeMutex.__init__",
         "self._scopes",
         "task_or_reply_route_map",
     ): 1,
     (
-        Path("deckr/src/deckr/core/util/anyio.py"),
+        Path("src/deckr/core/util/anyio.py"),
         "CoalescedStateBroadcaster.__init__",
         "self._registrations",
         "subscriber_registry",
     ): 1,
     (
-        Path("deckr/src/deckr/core/util/anyio.py"),
+        Path("src/deckr/core/util/anyio.py"),
         "CoalescedStateBroadcaster.subscribe",
         "send, receive",
         "bounded_state_stream",
     ): 1,
     (
-        Path("deckr/typescript/deckr/src/state.ts"),
-        "MemoryWatcher",
-        "pending",
-        "typescript_task_or_reply_route_map",
-    ): 1,
-    (
-        Path("deckr/typescript/deckr/src/state.ts"),
-        "MemoryStateStore",
-        "watchers",
-        "typescript_task_or_reply_route_map",
-    ): 1,
-    (
-        Path("deckr/src/deckr/substrates/nats.py"),
+        Path("src/deckr/substrates/nats.py"),
         "NatsSubstrate.request",
         "send, receive",
         "bounded_memory_stream",
     ): 1,
     (
-        Path("deckr/src/deckr/services/client.py"),
+        Path("src/deckr/services/client.py"),
         "DeckrServices._race_service_candidates",
         "send, receive",
         "bounded_memory_stream",
     ): 1,
     (
-        Path("deckr/src/deckr/substrates/supervised_nats.py"),
+        Path("src/deckr/substrates/supervised_nats.py"),
         "NatsServerSupervisor.__init__",
         "self._logs",
-        "bounded_queue",
-    ): 1,
-    (
-        Path("deckr-driver-virtual/src/deckr/drivers/virtual/_state.py"),
-        "VirtualDeck.__init__",
-        "self._input_history",
         "bounded_queue",
     ): 1,
 }
@@ -134,7 +108,7 @@ _PERMANENT_BOUNDED_BOUNDARIES: dict[_Boundary, int] = {
 # being removed too.
 _TEMPORARY_BOUNDARIES: dict[_Boundary, _TemporaryBoundary] = {
     (
-        Path("deckr/src/deckr/components/_runner.py"),
+        Path("src/deckr/components/_runner.py"),
         "ComponentManager.__init__",
         "self._running",
         "task_or_reply_route_map",
@@ -143,7 +117,7 @@ _TEMPORARY_BOUNDARIES: dict[_Boundary, _TemporaryBoundary] = {
         reason="cap live components and their owned work",
     ),
     (
-        Path("deckr/src/deckr/components/_runner.py"),
+        Path("src/deckr/components/_runner.py"),
         "ComponentManager.__init__",
         "self._lifecycle_by_name",
         "task_or_reply_route_map",
@@ -152,7 +126,7 @@ _TEMPORARY_BOUNDARIES: dict[_Boundary, _TemporaryBoundary] = {
         reason="bound component lifecycle identities with component admission",
     ),
     (
-        Path("deckr/src/deckr/services/client.py"),
+        Path("src/deckr/services/client.py"),
         "DeckrServices.__init__",
         "self._active_service_use_leases",
         "task_or_reply_route_map",
@@ -161,244 +135,7 @@ _TEMPORARY_BOUNDARIES: dict[_Boundary, _TemporaryBoundary] = {
         reason="cap and close active service-use lease owners",
     ),
     (
-        Path(
-            "deckr-action-provider-runtime-python/"
-            "src/deckr/action_provider_runtime/_sdk_actions.py"
-        ),
-        "DeckrAction.__init__",
-        "self.pages",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5A",
-        reason="cap action-owned dynamic page sessions",
-    ),
-    (
-        Path(
-            "deckr-action-provider-runtime-python/"
-            "src/deckr/action_provider_runtime/_sdk_actions.py"
-        ),
-        "DeckrAction.__init__",
-        "self._deckr_bindings",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5A",
-        reason="cap action-owned control bindings",
-    ),
-    (
-        Path(
-            "deckr-action-provider-runtime-python/"
-            "src/deckr/action_provider_runtime/_sdk_actions.py"
-        ),
-        "DeckrAction.__init__",
-        "self._deckr_contexts",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5A",
-        reason="cap mounted action contexts and close them with their owner",
-    ),
-    (
-        Path(
-            "deckr-action-provider-runtime-python/"
-            "src/deckr/action_provider_runtime/_sdk_host.py"
-        ),
-        "_ManagedDeckrActionHost.__init__",
-        "self._root_contexts",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5A",
-        reason="cap managed root contexts under provider ownership",
-    ),
-    (
-        Path(
-            "deckr-action-provider-runtime-python/"
-            "src/deckr/action_provider_runtime/runtime.py"
-        ),
-        "PythonActionProvider.__init__",
-        "self._instances",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5A",
-        reason="cap active action instances under provider ownership",
-    ),
-    (
-        Path(
-            "deckr-action-provider-runtime-python/"
-            "src/deckr/action_provider_runtime/runtime.py"
-        ),
-        "PythonActionProvider.__init__",
-        "self._contexts",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5A",
-        reason="cap runtime action contexts under provider ownership",
-    ),
-    (
-        Path(
-            "deckr-action-provider-runtime-python/"
-            "src/deckr/action_provider_runtime/runtime.py"
-        ),
-        "PythonActionProvider.__init__",
-        "self._bindings",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5A",
-        reason="cap runtime binding owners and their command routes",
-    ),
-    (
-        Path(
-            "deckr-action-provider-runtime-python/"
-            "src/deckr/action_provider_runtime/runtime.py"
-        ),
-        "PythonActionProvider.__init__",
-        "self._pages",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5A",
-        reason="cap runtime dynamic page sessions",
-    ),
-    (
-        Path(
-            "deckr-action-provider-runtime-python/"
-            "src/deckr/action_provider_runtime/runtime.py"
-        ),
-        "PythonActionProvider.__init__",
-        "self._managed_contracts_by_pointer",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5B",
-        reason="cap managed service contracts under provider-lease ownership",
-    ),
-    (
-        Path(
-            "deckr-action-provider-runtime-python/"
-            "src/deckr/action_provider_runtime/runtime.py"
-        ),
-        "PythonActionProvider.__init__",
-        "self._managed_view_contexts_by_pointer",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5B",
-        reason="cap managed view contexts under provider-lease ownership",
-    ),
-    (
-        Path("deckr-controller/src/deckr/controller/_actions/_service.py"),
-        "ControllerActionService.__init__",
-        "self._runtime_leases",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5A",
-        reason="cap provider runtime leases under controller ownership",
-    ),
-    (
-        Path(
-            "deckr-controller/src/deckr/controller/"
-            "_bindings/_action_lifecycle.py"
-        ),
-        "ActionInstanceLifecycleService.__init__",
-        "self._action_instances",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5A",
-        reason="cap controller-owned action instances",
-    ),
-    (
-        Path(
-            "deckr-controller/src/deckr/controller/"
-            "_bindings/_action_lifecycle.py"
-        ),
-        "ActionInstanceLifecycleService.__init__",
-        "self._action_instance_providers",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5A",
-        reason="bound action-to-provider ownership routes",
-    ),
-    (
-        Path(
-            "deckr-controller/src/deckr/controller/"
-            "_bindings/_action_lifecycle.py"
-        ),
-        "ActionInstanceLifecycleService.__init__",
-        "self._action_instance_provider_sessions",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5A",
-        reason="bound action-to-provider-session ownership routes",
-    ),
-    (
-        Path("deckr-controller/src/deckr/controller/_bindings/_attachments.py"),
-        "ControlAttachmentState.__init__",
-        "self.binding_leases",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5",
-        reason="cap retained binding lease identities",
-    ),
-    (
-        Path("deckr-controller/src/deckr/controller/_bindings/_attachments.py"),
-        "ControlAttachmentState.__init__",
-        "self.binding_by_context",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5",
-        reason="bound active context-to-binding routes",
-    ),
-    (
-        Path("deckr-controller/src/deckr/controller/_controller_service.py"),
-        "ControllerService.__init__",
-        "self._device_disconnect_events",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5C",
-        reason="bound device-disconnect wait routes and terminal cleanup",
-    ),
-    (
-        Path("deckr-controller/src/deckr/controller/_hardware/_routes.py"),
-        "DeviceRouteRegistry.__init__",
-        "self._devices_by_config",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5C",
-        reason="cap live device routes under managed hardware ownership",
-    ),
-    (
-        Path("deckr-driver-mqtt/src/deckr/drivers/mqtt/_factory.py"),
-        "Zigbee2MqttHardwareManager.__init__",
-        "self._runtimes",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5C",
-        reason="cap MQTT device runtimes under hardware ownership",
-    ),
-    (
-        Path("deckr-driver-mqtt/src/deckr/drivers/mqtt/_factory.py"),
-        "Zigbee2MqttHardwareManager.__init__",
-        "self._runtime_by_topic",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5C",
-        reason="bound MQTT topic-to-runtime routes",
-    ),
-    (
-        Path("deckr-driver-mqtt/src/deckr/drivers/mqtt/_factory.py"),
-        "Zigbee2MqttHardwareManager._reconcile_discovered_devices",
-        "self._runtime_by_topic",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5C",
-        reason="keep MQTT route replacement within the runtime admission bound",
-    ),
-    (
-        Path("deckr-plugin-sonos/src/deckr/plugins/sonos/sonosservice.py"),
-        "SonosServiceComponent.__init__",
-        "self._zone_event_by_name",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5B",
-        reason="bound retained zone event identities under provider ownership",
-    ),
-    (
-        Path("deckr/src/deckr/components/_runner.py"),
+        Path("src/deckr/components/_runner.py"),
         "ComponentManager.__init__",
         "self._event_send, self._event_receive",
         "bounded_memory_stream",
@@ -407,7 +144,7 @@ _TEMPORARY_BOUNDARIES: dict[_Boundary, _TemporaryBoundary] = {
         reason="replace oversized component ingress with explicit admission",
     ),
     (
-        Path("deckr/src/deckr/lanes.py"),
+        Path("src/deckr/lanes.py"),
         "EndpointSession.__init__",
         "self._subscriptions",
         "listener_or_sender_registry",
@@ -416,7 +153,7 @@ _TEMPORARY_BOUNDARIES: dict[_Boundary, _TemporaryBoundary] = {
         reason="cap endpoint subscription registrations and own their shutdown",
     ),
     (
-        Path("deckr/src/deckr/substrates/nats.py"),
+        Path("src/deckr/substrates/nats.py"),
         "NatsSubstrate.subscribe",
         "send, receive",
         "bounded_memory_stream",
@@ -425,151 +162,7 @@ _TEMPORARY_BOUNDARIES: dict[_Boundary, _TemporaryBoundary] = {
         reason="enforce the lane capacity invariant and typed overload closure",
     ),
     (
-        Path("deckr-driver-elgato/src/deckr/drivers/elgato/_device.py"),
-        "ElgatoDockDevice.__init__",
-        "self._event_send, self._event_receive",
-        "bounded_memory_stream",
-    ): _TemporaryBoundary(
-        phase="Phase 5C",
-        reason="move hardware input admission under the managed device owner",
-    ),
-    (
-        Path("deckr-driver-mirabox/src/deckr/drivers/mirabox/_discovery.py"),
-        "discover_mirabox_devices",
-        "send_stream, receive_stream",
-        "bounded_memory_stream",
-    ): _TemporaryBoundary(
-        phase="Phase 5C",
-        reason="make hardware connection event overload explicit",
-    ),
-    (
-        Path("deckr-driver-mirabox/src/deckr/drivers/mirabox/_discovery.py"),
-        "discover_mirabox_devices",
-        "discovery_send, discovery_receive",
-        "bounded_memory_stream",
-    ): _TemporaryBoundary(
-        phase="Phase 5C",
-        reason="bound discovery work under the managed hardware context",
-    ),
-    (
-        Path("deckr-driver-mirabox/src/deckr/drivers/mirabox/_discovery.py"),
-        "device_loop",
-        "command_send, command_receive",
-        "bounded_memory_stream",
-    ): _TemporaryBoundary(
-        phase="Phase 5C",
-        reason="make per-device command overload explicit",
-    ),
-    (
-        Path("deckr-driver-mirabox/src/deckr/drivers/mirabox/_factory.py"),
-        "MiraboxDeviceFactory.__init__",
-        "self._command_streams",
-        "listener_or_sender_registry",
-    ): _TemporaryBoundary(
-        phase="Phase 5C",
-        reason="cap and close every per-device command sender route",
-    ),
-    (
-        Path("deckr-driver-mirabox/src/deckr/drivers/mirabox/_transport.py"),
-        "_AsyncHidTransport.__init__",
-        "self._send_stream, self._receive_stream",
-        "bounded_memory_stream",
-    ): _TemporaryBoundary(
-        phase="Phase 5C",
-        reason="make HID input overload explicit",
-    ),
-    (
-        Path("deckr-driver-mirabox/src/deckr/drivers/mirabox/_transport.py"),
-        "_AsyncHidTransport.__init__",
-        "self._senders",
-        "listener_or_sender_registry",
-    ): _TemporaryBoundary(
-        phase="Phase 5C",
-        reason="cap HID listeners and define slow-sender closure",
-    ),
-    (
-        Path("deckr-driver-mirabox/src/deckr/drivers/mirabox/_transport.py"),
-        "_AsyncHidTransport.subscribe",
-        "send, receive",
-        "bounded_memory_stream",
-    ): _TemporaryBoundary(
-        phase="Phase 5C",
-        reason="make HID subscriber overload explicit",
-    ),
-    (
-        Path("deckr-plugin-openhab/src/deckr/plugins/openhab/openhabservice.py"),
-        "OpenHabServiceComponent.__init__",
-        "self._subscriptions",
-        "listener_or_sender_registry",
-    ): _TemporaryBoundary(
-        phase="Phase 5B",
-        reason="cap retained resource subscriptions under the provider lease",
-    ),
-    (
-        Path("deckr-plugin-sonos/src/deckr/plugins/sonos/sonosservice.py"),
-        "SonosServiceComponent.__init__",
-        "self._subscriptions",
-        "listener_or_sender_registry",
-    ): _TemporaryBoundary(
-        phase="Phase 5B",
-        reason="cap retained zone subscriptions under the provider lease",
-    ),
-    (
-        Path("deckr/typescript/deckr/src/beacon.ts"),
-        "BeaconService",
-        "advertisements",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="enforce the shared Beacon admission envelope in TypeScript",
-    ),
-    (
-        Path("deckr/typescript/deckr/src/services.ts"),
-        "ServiceViewStoreWriter",
-        "revisions",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="bound retained protected-view revision identities",
-    ),
-    (
-        Path("deckr/typescript/deckr/src/state.ts"),
-        "MemoryStateStore",
-        "entries",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="define admission for retained in-memory state identities",
-    ),
-    (
-        Path("deckr-adapter-elgato-node/src/host/ElgatoBridgeHost.ts"),
-        "ElgatoBridgeHost",
-        "actions",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="cap registered plugin actions under host ownership",
-    ),
-    (
-        Path("deckr-adapter-elgato-node/src/host/ElgatoBridgeHost.ts"),
-        "ElgatoBridgeHost",
-        "actionByInstanceKey",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="cap active action-instance routes under host ownership",
-    ),
-    (
-        Path("deckr-adapter-elgato-node/src/host/ElgatoBridgeHost.ts"),
-        "ElgatoBridgeHost",
-        "contextById",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="cap active context routes under host ownership",
-    ),
-    (
-        Path("deckr/src/deckr/services/subscriptions.py"),
+        Path("src/deckr/services/subscriptions.py"),
         "SharedResourceSubscriptionManager.__init__",
         "self._subscribers",
         "subscriber_registry",
@@ -578,19 +171,7 @@ _TEMPORARY_BOUNDARIES: dict[_Boundary, _TemporaryBoundary] = {
         reason="cap logical sessions under provider-lease-scoped ownership",
     ),
     (
-        Path(
-            "deckr-action-provider-runtime-python/"
-            "src/deckr/action_provider_runtime/_runtime_dispatch.py"
-        ),
-        "_RuntimeMessageDispatchMixin._action_dispatch_lane",
-        "send, receive",
-        "memory_stream_without_positive_capacity",
-    ): _TemporaryBoundary(
-        phase="Phase 5",
-        reason="replace infinite per-key dispatch lanes with bounded keyed workers",
-    ),
-    (
-        Path("deckr/src/deckr/substrates/nats.py"),
+        Path("src/deckr/substrates/nats.py"),
         "NatsSubstrate.__init__",
         "self._reply_subjects",
         "task_or_reply_route_map",
@@ -598,253 +179,21 @@ _TEMPORARY_BOUNDARIES: dict[_Boundary, _TemporaryBoundary] = {
         phase="Phase 5",
         reason="bound in-flight request routes and clean every terminal path",
     ),
-    (
-        Path(
-            "deckr-action-provider-runtime-python/"
-            "src/deckr/action_provider_runtime/runtime.py"
-        ),
-        "PythonActionProvider.__init__",
-        "self._action_dispatch_lanes",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5",
-        reason="cap keyed workers and evict idle dispatch lanes",
-    ),
-    (
-        Path(
-            "deckr-action-provider-runtime-python/"
-            "src/deckr/action_provider_runtime/_sdk_host.py"
-        ),
-        "_ComponentScopedTasks.__init__",
-        "self._scopes",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5",
-        reason="move component work under the managed action owner",
-    ),
-    (
-        Path(
-            "deckr-action-provider-runtime-python/"
-            "src/deckr/action_provider_runtime/_sdk_tasks.py"
-        ),
-        "_PageTaskScope.__init__",
-        "self._scopes",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5",
-        reason="move page work under the managed action owner",
-    ),
-    (
-        Path("deckr-controller/src/deckr/controller/_actions/_service.py"),
-        "ControllerActionService.__init__",
-        "self._service_watch_scopes",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5",
-        reason="replace per-provider watch scopes with the managed provider owner",
-    ),
-    (
-        Path("deckr-driver-mirabox/src/deckr/drivers/mirabox/_factory.py"),
-        "MiraboxDeviceFactory.__init__",
-        "self._command_streams",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5",
-        reason="move command routes to bounded managed hardware ownership",
-    ),
-    (
-        Path("deckr-driver-mirabox/src/deckr/drivers/mirabox/_discovery.py"),
-        "discover_mirabox_devices",
-        "command_streams",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5",
-        reason="move command routes to bounded managed hardware ownership",
-    ),
-    (
-        Path("deckr-plugin-openhab/src/deckr/plugins/openhab/openhabservice.py"),
-        "OpenHabServiceComponent.__init__",
-        "self._refresh_inflight",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5",
-        reason="bound provider work through managed command ownership",
-    ),
-    (
-        Path("deckr-plugin-sonos/src/deckr/plugins/sonos/sonosservice.py"),
-        "SonosServiceComponent.__init__",
-        "self._zone_watch_scopes",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5",
-        reason="replace per-zone tasks with provider-scoped managed work",
-    ),
-    (
-        Path("deckr-plugin-sonos/src/deckr/plugins/sonos/sonosservice.py"),
-        "SonosServiceComponent.__init__",
-        "self._resolver_inflight",
-        "task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 5",
-        reason="bound provider work through managed command ownership",
-    ),
-    (
-        Path("deckr/typescript/deckr/src/services.ts"),
-        "ServiceUseLeaseManager",
-        "leases",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="bound managed service owners and their retained resources",
-    ),
-    (
-        Path("deckr/typescript/deckr/src/concord.ts"),
-        "ConcordParticipantManager",
-        "managed",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="move managed agreement state under bounded pointer-scoped ownership",
-    ),
-    (
-        Path("deckr/typescript/deckr/src/concord.ts"),
-        "ConcordParticipantManager",
-        "leases",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="move participant leases under bounded agreement ownership",
-    ),
-    (
-        Path("deckr/typescript/deckr/src/concord.ts"),
-        "ConcordParticipantManager",
-        "timers",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="replace detached timer tracking with managed cancellation scopes",
-    ),
-    (
-        Path("deckr-adapter-elgato-node/src/elgato/runtime.ts"),
-        "ElgatoPluginRuntime",
-        "pendingMessages",
-        "typescript_array_queue_without_capacity",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="bound the plugin command queue with explicit overload",
-    ),
-    (
-        Path("deckr-adapter-elgato-node/src/bridge/nats/NatsBridge.ts"),
-        "NatsBridge",
-        "endpoints",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="bound managed endpoint-session routing",
-    ),
-    (
-        Path("deckr-adapter-elgato-node/src/bridge/nats/NatsBridge.ts"),
-        "NatsBridge",
-        "handlers",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="bound managed lane subscription handlers",
-    ),
-    (
-        Path("deckr-adapter-elgato-node/src/bridge/nats/NatsBridge.ts"),
-        "NatsBridge",
-        "providers",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="cap the managed provider worker registry",
-    ),
-    (
-        Path("deckr-adapter-elgato-node/src/host/ElgatoBridgeHost.ts"),
-        "ElgatoBridgeHost",
-        "actionByProviderAndId",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="cap provider action routing under managed provider ownership",
-    ),
-    (
-        Path("deckr-adapter-elgato-node/src/host/ElgatoBridgeHost.ts"),
-        "ElgatoBridgeHost",
-        "pendingSettingsByMessageId",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="bound reply routes and clean every terminal path",
-    ),
-    (
-        Path("deckr-adapter-elgato-node/src/host/ElgatoBridgeHost.ts"),
-        "ElgatoBridgeHost",
-        "providerByInstanceId",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="cap provider-scoped managed ownership",
-    ),
-    (
-        Path("deckr-adapter-elgato-node/src/host/ElgatoBridgeHost.ts"),
-        "ElgatoBridgeHost",
-        "providerByRuntime",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="cap provider runtime ownership",
-    ),
-    (
-        Path("deckr-adapter-elgato-node/src/host/ElgatoBridgeHost.ts"),
-        "ElgatoBridgeHost",
-        "runtimeByRegistrationUuid",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="cap managed plugin runtime ownership",
-    ),
-    (
-        Path("deckr-adapter-elgato-node/src/host/ElgatoBridgeHost.ts"),
-        "ElgatoBridgeHost",
-        "runtimeBySocket",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="cap managed plugin runtime socket routes",
-    ),
-    (
-        Path("deckr-adapter-elgato-node/src/host/ElgatoBridgeHost.ts"),
-        "ElgatoBridgeHost",
-        "runtimes",
-        "typescript_task_or_reply_route_map",
-    ): _TemporaryBoundary(
-        phase="Phase 8",
-        reason="cap managed plugin runtime workers",
-    ),
 }
 
 
 def test_production_queue_and_task_boundaries_are_inventoried() -> None:
-    workspace = Path(__file__).resolve().parents[2]
-    production_files = _production_python_files(workspace)
+    repository = Path(__file__).resolve().parents[1]
+    production_files = _production_python_files(repository)
     observed: Counter[_Boundary] = Counter()
     for path in production_files:
-        relative = path.relative_to(workspace)
+        relative = path.relative_to(repository)
         tree = ast.parse(path.read_text(), filename=str(path))
         visitor = _QueueTaskBoundaryVisitor(relative)
         visitor.visit(tree)
         observed.update(visitor.boundaries)
 
-    typescript_files = _production_typescript_files(workspace)
-    for path in typescript_files:
-        relative = path.relative_to(workspace)
-        observed.update(_typescript_queue_task_boundaries(relative, path.read_text()))
-
-    available_paths = {
-        path.relative_to(workspace) for path in (*production_files, *typescript_files)
-    }
+    available_paths = {path.relative_to(repository) for path in production_files}
     allowed = Counter(
         {
             boundary: metadata.count
@@ -967,73 +316,6 @@ class Example:
     )
 
 
-def test_typescript_queue_task_audit_detects_forbidden_field_shapes() -> None:
-    source = """
-class Example {
-  private queue: Command[] = [];
-  private readonly pendingReplies = new Map<string, PendingReply>();
-  private readonly workers = new Set<Worker>();
-  private readonly catalog = new Map<string, Descriptor>();
-  defaultPublicQueue: Command[] = [];
-  typedCatalog: Map<string, Descriptor> = new Map<string, Descriptor>();
-  defaultPublicObservers = new Set<Observer>();
-
-  method() {
-    const local = new Map<string, Descriptor>();
-  }
-}
-"""
-
-    assert _typescript_queue_task_boundaries(
-        Path("deckr-example/src/example.ts"), source
-    ) == Counter(
-        {
-            (
-                Path("deckr-example/src/example.ts"),
-                "Example",
-                "queue",
-                "typescript_array_queue_without_capacity",
-            ): 1,
-            (
-                Path("deckr-example/src/example.ts"),
-                "Example",
-                "pendingReplies",
-                "typescript_task_or_reply_route_map",
-            ): 1,
-            (
-                Path("deckr-example/src/example.ts"),
-                "Example",
-                "workers",
-                "typescript_task_or_reply_route_map",
-            ): 1,
-            (
-                Path("deckr-example/src/example.ts"),
-                "Example",
-                "catalog",
-                "typescript_task_or_reply_route_map",
-            ): 1,
-            (
-                Path("deckr-example/src/example.ts"),
-                "Example",
-                "defaultPublicQueue",
-                "typescript_array_queue_without_capacity",
-            ): 1,
-            (
-                Path("deckr-example/src/example.ts"),
-                "Example",
-                "typedCatalog",
-                "typescript_task_or_reply_route_map",
-            ): 1,
-            (
-                Path("deckr-example/src/example.ts"),
-                "Example",
-                "defaultPublicObservers",
-                "typescript_task_or_reply_route_map",
-            ): 1,
-        }
-    )
-
-
 def test_queue_task_audit_detects_bounded_state_streams_and_registries() -> None:
     tree = ast.parse(
         """
@@ -1046,20 +328,20 @@ class NatsKvMaterializedBucket:
 """
     )
     visitor = _QueueTaskBoundaryVisitor(
-        Path("deckr/src/deckr/substrates/nats_kv.py")
+        Path("src/deckr/substrates/nats_kv.py")
     )
     visitor.visit(tree)
 
     assert visitor.boundaries == Counter(
         {
             (
-                Path("deckr/src/deckr/substrates/nats_kv.py"),
+                Path("src/deckr/substrates/nats_kv.py"),
                 "NatsKvMaterializedBucket.__init__",
                 "self._subscribers",
                 "subscriber_registry",
             ): 1,
             (
-                Path("deckr/src/deckr/substrates/nats_kv.py"),
+                Path("src/deckr/substrates/nats_kv.py"),
                 "NatsKvMaterializedBucket.subscribe",
                 "send, receive",
                 "bounded_state_stream",
@@ -1412,54 +694,6 @@ def _is_task_or_reply_route_map(owner: str, *, annotation: str) -> bool:
     )
 
 
-_TYPESCRIPT_CLASS = re.compile(
-    r"(?m)^\s*(?:export\s+)?(?:default\s+)?class\s+(?P<name>[A-Za-z_$][\w$]*)"
-)
-_TYPESCRIPT_ARRAY_FIELD = re.compile(
-    r"(?m)^[ \t]+(?!(?:const|let|var)\b)"
-    r"(?:(?:abstract|declare|override|private|protected|public|readonly|static)\s+)*"
-    r"(?P<name>[A-Za-z_$][\w$]*)[!?]?\s*(?::[^;\n=]+)?\s*=\s*\[\]\s*;"
-)
-_TYPESCRIPT_MAP_FIELD = re.compile(
-    r"(?m)^[ \t]+(?!(?:const|let|var)\b)"
-    r"(?:(?:abstract|declare|override|private|protected|public|readonly|static)\s+)*"
-    r"(?P<name>[A-Za-z_$][\w$]*)[!?]?\s*(?::[^;\n=]+)?\s*=\s*"
-    r"new\s+(?:Map|Set)\b"
-)
-def _typescript_queue_task_boundaries(
-    path: Path,
-    source: str,
-) -> Counter[_Boundary]:
-    boundaries: Counter[_Boundary] = Counter()
-    for match in _TYPESCRIPT_ARRAY_FIELD.finditer(source):
-        boundaries[
-            (
-                path,
-                _typescript_class_at(source, match.start()),
-                match.group("name"),
-                "typescript_array_queue_without_capacity",
-            )
-        ] += 1
-    for match in _TYPESCRIPT_MAP_FIELD.finditer(source):
-        name = match.group("name")
-        boundaries[
-            (
-                path,
-                _typescript_class_at(source, match.start()),
-                name,
-                "typescript_task_or_reply_route_map",
-            )
-        ] += 1
-    return boundaries
-
-
-def _typescript_class_at(source: str, position: int) -> str:
-    scope = "<module>"
-    for match in _TYPESCRIPT_CLASS.finditer(source, 0, position):
-        scope = match.group("name")
-    return scope
-
-
 def _target_name(node: ast.AST) -> str:
     if isinstance(node, ast.Name):
         return node.id
@@ -1471,34 +705,14 @@ def _target_name(node: ast.AST) -> str:
     return ast.unparse(node)
 
 
-def _production_python_files(workspace: Path) -> tuple[Path, ...]:
-    files: list[Path] = []
-    for child in workspace.iterdir():
-        src = child / "src"
-        if not child.name.startswith("deckr") or not src.is_dir():
-            continue
-        files.extend(
+def _production_python_files(repository: Path) -> tuple[Path, ...]:
+    return tuple(
+        sorted(
             path
-            for path in src.rglob("*.py")
-            if "tests" not in path.parts
-            and "testing" not in path.parts
-            and "__pycache__" not in path.parts
+            for path in (repository / "src").rglob("*.py")
+            if "tests" not in path.parts and "__pycache__" not in path.parts and "testing" not in path.parts
         )
-    return tuple(sorted(files))
-
-
-def _production_typescript_files(workspace: Path) -> tuple[Path, ...]:
-    files: list[Path] = []
-    excluded = {"__tests__", "dist", "node_modules", "test", "tests"}
-    for child in workspace.iterdir():
-        if not child.name.startswith("deckr"):
-            continue
-        for path in child.rglob("*.ts"):
-            relative_parts = path.relative_to(child).parts
-            if "src" not in relative_parts or excluded.intersection(relative_parts):
-                continue
-            files.append(path)
-    return tuple(sorted(files))
+    )
 
 
 def _format_boundary_diff(

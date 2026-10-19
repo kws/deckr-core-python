@@ -46,31 +46,31 @@ _CallSite = tuple[Path, str, str, str]
 _APPROVED_CORE_LIFECYCLE_CALLS: Counter[_CallSite] = Counter(
     {
         (
-            Path("deckr/src/deckr/runtime.py"),
+            Path("src/deckr/runtime.py"),
             "Deckr.__aenter__",
             "Beacon",
             "construct",
         ): 1,
         (
-            Path("deckr/src/deckr/testing/concord.py"),
+            Path("src/deckr/testing/concord.py"),
             "ConcordRuntimeHarness.__init__",
             "Concord",
             "construct",
         ): 1,
         (
-            Path("deckr/src/deckr/runtime.py"),
+            Path("src/deckr/runtime.py"),
             "Deckr.__aenter__",
             "Concord",
             "construct",
         ): 1,
         (
-            Path("deckr/src/deckr/runtime.py"),
+            Path("src/deckr/runtime.py"),
             "Deckr.__aenter__",
             "self._beacon",
             "start",
         ): 1,
         (
-            Path("deckr/src/deckr/runtime.py"),
+            Path("src/deckr/runtime.py"),
             "Deckr.__aenter__",
             "self._concord",
             "start",
@@ -84,13 +84,13 @@ _APPROVED_CORE_LIFECYCLE_CALLS: Counter[_CallSite] = Counter(
 _APPROVED_MANAGED_CANCEL_CALLS: Counter[_CallSite] = Counter(
     {
         (
-            Path("deckr/src/deckr/services/provider.py"),
+            Path("src/deckr/services/provider.py"),
             "ServiceProvider.cancel_authorized",
             "self._participant",
             "cancel",
         ): 1,
         (
-            Path("deckr/src/deckr/hardware/runtime.py"),
+            Path("src/deckr/hardware/runtime.py"),
             "HardwareManagerRuntime._cancel_claims_for_device",
             "self._claim_manager",
             "cancel",
@@ -100,20 +100,20 @@ _APPROVED_MANAGED_CANCEL_CALLS: Counter[_CallSite] = Counter(
 
 
 def test_production_code_uses_managed_lifecycle_routes() -> None:
-    workspace = Path(__file__).resolve().parents[2]
+    repository = Path(__file__).resolve().parents[1]
     observed: Counter[_CallSite] = Counter()
-    production_files = _production_python_files(workspace)
+    production_files = _production_python_files(repository)
     for path in production_files:
-        relative = path.relative_to(workspace)
+        relative = path.relative_to(repository)
         if relative in {
-            Path("deckr/src/deckr/beacon.py"),
-            Path("deckr/src/deckr/_concord/_agreement.py"),
-            Path("deckr/src/deckr/_concord/_lease.py"),
-            Path("deckr/src/deckr/_concord/_maintenance.py"),
-                Path("deckr/src/deckr/_concord/_participant.py"),
-                Path("deckr/src/deckr/_concord/_store.py"),
-                Path("deckr/src/deckr/_concord/_view.py"),
-            Path("deckr/src/deckr/concord.py"),
+            Path("src/deckr/beacon.py"),
+            Path("src/deckr/_concord/_agreement.py"),
+            Path("src/deckr/_concord/_lease.py"),
+            Path("src/deckr/_concord/_maintenance.py"),
+                Path("src/deckr/_concord/_participant.py"),
+                Path("src/deckr/_concord/_store.py"),
+                Path("src/deckr/_concord/_view.py"),
+            Path("src/deckr/concord.py"),
         }:
             continue
         tree = ast.parse(path.read_text(), filename=str(path))
@@ -121,7 +121,7 @@ def test_production_code_uses_managed_lifecycle_routes() -> None:
         visitor.visit(tree)
         observed.update(visitor.calls)
 
-    available_paths = {path.relative_to(workspace) for path in production_files}
+    available_paths = {path.relative_to(repository) for path in production_files}
     allowed = Counter(
         {
             callsite: count
@@ -192,47 +192,38 @@ class Owner:
     )
 
 
-def _production_python_files(workspace: Path) -> tuple[Path, ...]:
-    roots: list[Path] = []
-    for child in workspace.iterdir():
-        if not child.name.startswith("deckr"):
-            continue
-        for dirname in ("src",):
-            root = child / dirname
-            if root.is_dir():
-                roots.append(root)
-    files: list[Path] = []
-    for root in roots:
-        files.extend(
+def _production_python_files(repository: Path) -> tuple[Path, ...]:
+    return tuple(
+        sorted(
             path
-            for path in root.rglob("*.py")
+            for path in (repository / "src").rglob("*.py")
             if "tests" not in path.parts and "__pycache__" not in path.parts
         )
-    return tuple(sorted(files))
+    )
 
 
-def test_workspace_tests_do_not_construct_three_store_concord() -> None:
-    workspace = Path(__file__).resolve().parents[2]
+def test_repository_tests_do_not_construct_three_store_concord() -> None:
+    repository = Path(__file__).resolve().parents[1]
     offenders: list[str] = []
-    for path in sorted(workspace.glob("deckr*/tests/**/*.py")):
+    for path in sorted((repository / "tests").rglob("*.py")):
         tree = ast.parse(path.read_text(), filename=str(path))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call) or len(node.args) < 3:
                 continue
             name = _receiver_name(node.func)
             if name.rsplit(".", 1)[-1] == "Concord":
-                offenders.append(f"{path.relative_to(workspace)}:{node.lineno}")
+                offenders.append(f"{path.relative_to(repository)}:{node.lineno}")
     assert not offenders, "direct three-store Concord test construction: " + ", ".join(
         offenders
     )
 
 
 def test_production_does_not_import_deckr_testing() -> None:
-    workspace = Path(__file__).resolve().parents[2]
+    repository = Path(__file__).resolve().parents[1]
     offenders: list[str] = []
-    for path in _production_python_files(workspace):
-        relative = path.relative_to(workspace)
-        if relative.parts[:4] == ("deckr", "src", "deckr", "testing"):
+    for path in _production_python_files(repository):
+        relative = path.relative_to(repository)
+        if relative.parts[:3] == ("src", "deckr", "testing"):
             continue
         tree = ast.parse(path.read_text(), filename=str(path))
         for node in ast.walk(tree):
@@ -264,11 +255,11 @@ def test_legacy_core_memory_kv_module_is_removed() -> None:
 
 
 def test_concord_conflict_handlers_do_not_classify_exception_text() -> None:
-    workspace = Path(__file__).resolve().parents[2]
+    repository = Path(__file__).resolve().parents[1]
     offenders: list[str] = []
-    for path in _production_python_files(workspace):
+    for path in _production_python_files(repository):
         tree = ast.parse(path.read_text(), filename=str(path))
-        relative = path.relative_to(workspace)
+        relative = path.relative_to(repository)
         for handler in (
             node for node in ast.walk(tree) if isinstance(node, ast.ExceptHandler)
         ):

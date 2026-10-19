@@ -90,11 +90,11 @@ def test_public_authority_bucket_constants_reexport_internal_registry() -> None:
 
 
 def test_generic_component_kv_cannot_open_reserved_authority_buckets() -> None:
-    workspace = Path(__file__).resolve().parents[2]
-    production_files = _production_python_files(workspace)
+    repository = Path(__file__).resolve().parents[1]
+    production_files = _production_python_files(repository)
     observed: Counter[_CallSite] = Counter()
     for path in production_files:
-        relative = path.relative_to(workspace)
+        relative = path.relative_to(repository)
         tree = ast.parse(path.read_text(), filename=str(path))
         visitor = _GenericAuthorityKvVisitor(relative)
         visitor.visit(tree)
@@ -152,11 +152,11 @@ def test_component_typed_maintenance_route_uses_canonical_store_bundle() -> None
 
 
 def test_reserved_authority_bucket_names_have_one_production_definition() -> None:
-    workspace = Path(__file__).resolve().parents[2]
-    registry = Path("deckr/src/deckr/_authority_buckets.py")
+    repository = Path(__file__).resolve().parents[1]
+    registry = Path("src/deckr/_authority_buckets.py")
     duplicates: list[str] = []
-    for path in _production_python_files(workspace):
-        relative = path.relative_to(workspace)
+    for path in _production_python_files(repository):
+        relative = path.relative_to(repository)
         if relative == registry:
             continue
         tree = ast.parse(path.read_text(), filename=str(path))
@@ -254,18 +254,14 @@ def _receiver_name(node: ast.AST) -> str:
     return ""
 
 
-def _production_python_files(workspace: Path) -> tuple[Path, ...]:
-    files: list[Path] = []
-    for child in workspace.iterdir():
-        src = child / "src"
-        if not child.name.startswith("deckr") or not src.is_dir():
-            continue
-        files.extend(
+def _production_python_files(repository: Path) -> tuple[Path, ...]:
+    return tuple(
+        sorted(
             path
-            for path in src.rglob("*.py")
+            for path in (repository / "src").rglob("*.py")
             if "tests" not in path.parts and "__pycache__" not in path.parts
         )
-    return tuple(sorted(files))
+    )
 
 
 def _format_callsites(calls: Counter[_CallSite]) -> list[str]:

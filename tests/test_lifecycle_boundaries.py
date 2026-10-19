@@ -13,136 +13,113 @@ _WatchBoundary = tuple[Path, str, str, str]
 # than silently evading a receiver-name pattern.
 _APPROVED_AUTHORITY_STATE_BOUNDARIES: dict[_WatchBoundary, str] = {
     (
-        Path("deckr/src/deckr/_beacon/_view.py"),
+        Path("src/deckr/_beacon/_view.py"),
         "BeaconView.run",
         "self.source",
         "subscribe",
     ): "Phase 3 Beacon materialized-view source",
     (
-        Path("deckr/src/deckr/_beacon/_view.py"),
+        Path("src/deckr/_beacon/_view.py"),
         "BeaconView.subscribe",
         "self._broadcaster",
         "subscribe",
     ): "Phase 3 Beacon coalesced semantic view",
     (
-        Path("deckr/src/deckr/_concord/_store.py"),
+        Path("src/deckr/_concord/_store.py"),
         "_MaterializedSourceAdapter.subscribe",
         "self._bucket",
         "subscribe",
     ): "Phase 3 Concord materialized-store adapter",
     (
-        Path("deckr/src/deckr/_concord/_view.py"),
+        Path("src/deckr/_concord/_view.py"),
         "ConcordView._contract_loop",
         "self.contract_source",
         "subscribe",
     ): "Phase 3 Concord contract source",
     (
-        Path("deckr/src/deckr/_concord/_view.py"),
+        Path("src/deckr/_concord/_view.py"),
         "ConcordView._token_loop",
         "self.token_source",
         "subscribe",
     ): "Phase 3 Concord participant-token source",
     (
-        Path("deckr/src/deckr/_concord/_view.py"),
+        Path("src/deckr/_concord/_view.py"),
         "ConcordView.subscribe",
         "self._broadcaster",
         "subscribe",
     ): "Phase 3 Concord coalesced semantic view",
     (
-        Path("deckr/src/deckr/beacon.py"),
+        Path("src/deckr/beacon.py"),
         "Beacon.watch",
         "self._view",
         "subscribe",
     ): "Phase 3 Beacon public watch facade",
     (
-        Path("deckr/src/deckr/concord.py"),
+        Path("src/deckr/concord.py"),
         "Concord.watch",
         "self._view",
         "subscribe",
     ): "Phase 3 Concord public watch facade",
     (
-        Path("deckr/src/deckr/_concord/_agreement.py"),
+        Path("src/deckr/_concord/_agreement.py"),
         "ConcordAgreementLease._watch_loop",
         "self._view",
         "subscribe",
     ): "Phase 4 agreement filtered view source",
     (
-        Path("deckr/src/deckr/_concord/_agreement.py"),
+        Path("src/deckr/_concord/_agreement.py"),
         "ConcordAgreementLease.wait_for_state.wait",
         "self._state_bus",
         "subscribe",
     ): "Phase 4 agreement atomic state wait",
     (
-        Path("deckr/src/deckr/_concord/_agreement.py"),
+        Path("src/deckr/_concord/_agreement.py"),
         "ConcordAgreementLease.watch_state",
         "self._state_bus",
         "subscribe",
     ): "Phase 4 agreement coalesced state",
     (
-        Path("deckr/src/deckr/_concord/_lease.py"),
+        Path("src/deckr/_concord/_lease.py"),
         "ConcordParticipantLease.attach",
         "self._view",
         "subscribe",
     ): "Phase 4 partial-attach view-version retry source",
     (
-        Path("deckr/src/deckr/_concord/_participant.py"),
+        Path("src/deckr/_concord/_participant.py"),
         "ConcordParticipant._watch_loop",
         "self._view",
         "subscribe",
     ): "Phase 4 participant filtered view source",
     (
-        Path("deckr/src/deckr/_concord/_participant.py"),
+        Path("src/deckr/_concord/_participant.py"),
         "ConcordParticipant.wait_for_state.wait",
         "self._state_bus",
         "subscribe",
     ): "Phase 4 participant atomic state wait",
     (
-        Path("deckr/src/deckr/_concord/_participant.py"),
+        Path("src/deckr/_concord/_participant.py"),
         "ConcordParticipant.watch_state",
         "self._state_bus",
         "subscribe",
     ): "Phase 4 participant coalesced state",
     (
-        Path("deckr/src/deckr/services/client.py"),
+        Path("src/deckr/services/client.py"),
         "ManagedService.wait_for_state.wait",
         "self._state_bus",
         "subscribe",
     ): "Phase 4 managed-service atomic state wait",
     (
-        Path("deckr/src/deckr/services/client.py"),
+        Path("src/deckr/services/client.py"),
         "ManagedService.watch_state",
         "self._state_bus",
         "subscribe",
     ): "Phase 4 managed-service coalesced state",
     (
-        Path("deckr/src/deckr/services/provider.py"),
+        Path("src/deckr/services/provider.py"),
         "ServiceProvider.watch_state",
         "self._participant",
         "watch_state",
     ): "Phase 4 provider-owned participant state",
-    (
-        Path(
-            "deckr-action-provider-runtime-python/"
-            "src/deckr/action_provider_runtime/runtime.py"
-        ),
-        "PythonActionProvider._service_contract_event_loop",
-        "provider",
-        "watch_state",
-    ): "Phase 4 provider-owned participant authority",
-    (
-        Path(
-            "deckr-plugin-openhab/src/deckr/plugins/openhab/openhabservice.py"
-        ),
-        "OpenHabServiceComponent._service_contract_event_loop",
-        "provider",
-        "watch_state",
-    ): "Phase 4 provider-owned participant authority",
-    (
-        Path("deckr-plugin-sonos/src/deckr/plugins/sonos/sonosservice.py"),
-        "SonosServiceComponent._service_contract_event_loop",
-        "provider",
-        "watch_state",
-    ): "Phase 4 provider-owned participant authority",
 }
 
 
@@ -153,285 +130,135 @@ _APPROVED_AUTHORITY_STATE_BOUNDARIES: dict[_WatchBoundary, str] = {
 _APPROVED_OTHER_WATCH_BOUNDARIES = Counter[_WatchBoundary](
     {
         (
-            Path("deckr/src/deckr/beacon.py"),
+            Path("src/deckr/beacon.py"),
             "BeaconDirectory._event_loop",
             "self._beacon",
             "watch",
         ): 1,
         (
-            Path("deckr/src/deckr/components/_runner.py"),
+            Path("src/deckr/components/_runner.py"),
             "ComponentManager.wait_for_state",
             "self",
             "subscribe",
         ): 1,
         (
-            Path("deckr/src/deckr/components/_runner.py"),
+            Path("src/deckr/components/_runner.py"),
             "ComponentManager.subscribe",
             "self._lifecycle_state",
             "subscribe",
         ): 1,
         (
-            Path("deckr/src/deckr/components/_runner.py"),
+            Path("src/deckr/components/_runner.py"),
             "ComponentManager.subscribe_status",
             "self._status_state",
             "subscribe",
         ): 1,
         (
-            Path("deckr/src/deckr/hardware/runtime.py"),
+            Path("src/deckr/hardware/runtime.py"),
             "HardwareManagerRuntime._command_subscription_loop",
             "self.endpoint",
             "subscribe",
         ): 1,
         (
-            Path("deckr/src/deckr/hardware/runtime.py"),
+            Path("src/deckr/hardware/runtime.py"),
             "HardwareManagerRuntime._contract_event_loop",
             "self._claim_manager",
             "watch_state",
         ): 1,
         (
-            Path("deckr/src/deckr/lanes.py"),
+            Path("src/deckr/lanes.py"),
             "EndpointSession.subscribe",
             "self._message_bus",
             "subscribe",
         ): 1,
         (
-            Path("deckr/src/deckr/services/client.py"),
+            Path("src/deckr/services/client.py"),
             "DeckrServices._watch_view",
             "store",
             "watch",
         ): 1,
         (
-            Path("deckr/src/deckr/services/provider.py"),
+            Path("src/deckr/services/provider.py"),
             "ServiceProvider._enter",
             "self.endpoint",
             "subscribe",
         ): 1,
         (
-            Path("deckr/src/deckr/services/client.py"),
+            Path("src/deckr/services/client.py"),
             "_ServiceManagedServiceViewAccess.watch",
             "self._store",
             "watch",
         ): 1,
         (
-            Path("deckr/src/deckr/services/client.py"),
+            Path("src/deckr/services/client.py"),
             "_LeaseManagedServiceViewAccess.watch",
             "super()",
             "watch",
         ): 1,
         (
-            Path("deckr/src/deckr/services/subscriptions.py"),
+            Path("src/deckr/services/subscriptions.py"),
             "SharedResourceSubscriptionManager.open_session",
             "self._state",
             "subscribe",
         ): 1,
         (
-            Path("deckr/src/deckr/services/views.py"),
+            Path("src/deckr/services/views.py"),
             "ServiceViewStore.watch",
             "self._state",
             "subscribe",
         ): 1,
         (
-            Path("deckr/src/deckr/services/views.py"),
+            Path("src/deckr/services/views.py"),
             "ServiceViewStore._event_loop",
             "self._bucket",
             "subscribe",
         ): 1,
         (
-            Path("deckr/src/deckr/services/views.py"),
+            Path("src/deckr/services/views.py"),
             "ManagedServiceViewAccess.watch",
             "self._store",
             "watch",
         ): 1,
         (
-            Path("deckr/src/deckr/substrates/nats.py"),
+            Path("src/deckr/substrates/nats.py"),
             "NatsSubstrate.request",
             "self._nc",
             "subscribe",
         ): 1,
         (
-            Path("deckr/src/deckr/substrates/nats.py"),
+            Path("src/deckr/substrates/nats.py"),
             "NatsSubstrate.subscribe",
             "self._nc",
             "subscribe",
         ): 2,
         (
-            Path("deckr/src/deckr/substrates/nats_kv.py"),
+            Path("src/deckr/substrates/nats_kv.py"),
             "NatsJsonKvBucket.watch",
             "kv",
             "watch",
         ): 1,
         (
-            Path("deckr/src/deckr/substrates/nats_kv.py"),
+            Path("src/deckr/substrates/nats_kv.py"),
             "NatsKvMaterializedBucket.subscribe",
             "self._broadcaster",
             "subscribe",
         ): 1,
         (
-            Path("deckr/src/deckr/substrates/nats_kv.py"),
+            Path("src/deckr/substrates/nats_kv.py"),
             "NatsKvMaterializedBucket._consume_one_watch",
             "self._bucket",
             "watch",
         ): 1,
         (
-            Path("deckr/src/deckr/substrates/nats_kv.py"),
+            Path("src/deckr/substrates/nats_kv.py"),
             "kv_keys_by_watch",
             "kv",
             "watch",
         ): 1,
         (
-            Path("deckr/src/deckr/substrates/supervised_nats.py"),
+            Path("src/deckr/substrates/supervised_nats.py"),
             "SupervisedNatsSubstrate.subscribe",
             "self._connected_nats()",
-            "subscribe",
-        ): 1,
-        (
-            Path("deckr-controller/src/deckr/controller/_controller_service.py"),
-            "ControllerService._actions_subscription_loop",
-            "self._endpoint",
-            "subscribe",
-        ): 1,
-        (
-            Path("deckr-controller/src/deckr/controller/_controller_service.py"),
-            "ControllerService._device_lifecycle",
-            "self._config_service",
-            "subscribe",
-        ): 1,
-        (
-            Path(
-                "deckr-controller/src/deckr/controller/_hardware/_service.py"
-            ),
-            "ControllerHardwareService._input_loop",
-            "self._endpoint",
-            "subscribe",
-        ): 1,
-        (
-            Path(
-                "deckr-controller/src/deckr/controller/_hardware/_claims.py"
-            ),
-            "HardwareClaimCoordinator._agreement_state_loop",
-            "owned.agreement",
-            "watch_state",
-        ): 1,
-        (
-            Path("deckr-controller-atc/src/deckr_controller_atc/controller.py"),
-            "AtcRadarService._agreement_state_loop",
-            "agreement",
-            "watch_state",
-        ): 1,
-        (
-            Path(
-                "deckr-controller/src/deckr/controller/config/_materialized.py"
-            ),
-            "MaterializedDeviceConfigService._subscribe_impl",
-            "self._state",
-            "subscribe",
-        ): 1,
-        (
-            Path(
-                "deckr-controller/src/deckr/controller/config/_materialized.py"
-            ),
-            "MaterializedDeviceConfigService._watch_loop",
-            "self._bucket",
-            "watch",
-        ): 1,
-        (
-            Path("deckr-controller/src/deckr/controller/config/_service.py"),
-            "FileBackedDeviceConfigService._subscribe_impl",
-            "self._state",
-            "subscribe",
-        ): 1,
-        (
-            Path("deckr-controller-atc/src/deckr_controller_atc/controller.py"),
-            "AtcRadarService._hardware_input_loop",
-            "endpoint",
-            "subscribe",
-        ): 1,
-        (
-            Path("deckr-driver-elgato/src/deckr/drivers/elgato/_discovery.py"),
-            "ElgatoDeviceSupervisor._forward_input",
-            "device",
-            "subscribe",
-        ): 1,
-        (
-            Path("deckr-driver-mirabox/src/deckr/drivers/mirabox/_device.py"),
-            "MiraBoxDockDevice.subscribe",
-            "self.transport",
-            "subscribe",
-        ): 1,
-        (
-            Path(
-                "deckr-driver-mirabox/src/deckr/drivers/mirabox/_discovery.py"
-            ),
-            "_forward_device_events",
-            "device",
-            "subscribe",
-        ): 1,
-        (
-            Path("deckr-driver-mqtt/src/deckr/drivers/mqtt/_actions_cli.py"),
-            "_read_bridge_devices",
-            "client",
-            "subscribe",
-        ): 1,
-        (
-            Path("deckr-driver-mqtt/src/deckr/drivers/mqtt/_actions_cli.py"),
-            "_read_bridge_device_metadata",
-            "client",
-            "subscribe",
-        ): 1,
-        (
-            Path("deckr-driver-mqtt/src/deckr/drivers/mqtt/_actions_cli.py"),
-            "_inspect",
-            "client",
-            "subscribe",
-        ): 2,
-        (
-            Path("deckr-driver-mqtt/src/deckr/drivers/mqtt/_factory.py"),
-            "Zigbee2MqttHardwareManager._mqtt_discovery_loop",
-            "client",
-            "subscribe",
-        ): 1,
-        (
-            Path("deckr-driver-mqtt/src/deckr/drivers/mqtt/_factory.py"),
-            "Zigbee2MqttHardwareManager._handle_bridge_devices_payload",
-            "client",
-            "subscribe",
-        ): 1,
-        (
-            Path("deckr-driver-virtual/src/deckr/drivers/virtual/_state.py"),
-            "VirtualDeck.subscribe",
-            "self._state",
-            "subscribe",
-        ): 1,
-        (
-            Path("deckr-driver-virtual/src/deckr/drivers/virtual/_web.py"),
-            "create_app.events",
-            "deck",
-            "subscribe",
-        ): 1,
-        (
-            Path("deckr-plugin-sonos/src/deckr/plugins/sonos/_soco_remote.py"),
-            "SoCoSonosRemoteZone._subscribe",
-            "self._events",
-            "subscribe",
-        ): 1,
-        (
-            Path("deckr-plugin-sonos/src/deckr/plugins/sonos/_soco_remote.py"),
-            "_connect_speaker_sync",
-            "speaker.avTransport",
-            "subscribe",
-        ): 1,
-        (
-            Path("deckr-plugin-sonos/src/deckr/plugins/sonos/_soco_remote.py"),
-            "_connect_speaker_sync",
-            "speaker.renderingControl",
-            "subscribe",
-        ): 1,
-        (
-            Path(
-                "deckr-plugin-sonos/src/deckr/plugins/sonos/sonosservice.py"
-            ),
-            "SonosServiceComponent._zone_event_snapshots",
-            "self._zone_events",
             "subscribe",
         ): 1,
     }
@@ -441,14 +268,14 @@ _APPROVED_OTHER_WATCH_BOUNDARIES = Counter[_WatchBoundary](
 def test_production_watch_and_subscription_boundaries_are_exactly_inventoried() -> (
     None
 ):
-    workspace = Path(__file__).resolve().parents[2]
-    production_files = _production_python_files(workspace)
+    repository = Path(__file__).resolve().parents[1]
+    production_files = _production_python_files(repository)
     observed: Counter[_WatchBoundary] = Counter()
     for path in production_files:
-        relative = path.relative_to(workspace)
+        relative = path.relative_to(repository)
         observed.update(_watch_boundaries(relative, path.read_text()))
 
-    available_paths = {path.relative_to(workspace) for path in production_files}
+    available_paths = {path.relative_to(repository) for path in production_files}
     expected = Counter(
         {
             boundary: 1
@@ -538,20 +365,14 @@ def _watch_boundaries(path: Path, source: str) -> Counter[_WatchBoundary]:
     return visitor.boundaries
 
 
-def _production_python_files(workspace: Path) -> tuple[Path, ...]:
-    files: list[Path] = []
-    for child in workspace.iterdir():
-        src = child / "src"
-        if not child.name.startswith("deckr") or not src.is_dir():
-            continue
-        files.extend(
+def _production_python_files(repository: Path) -> tuple[Path, ...]:
+    return tuple(
+        sorted(
             path
-            for path in src.rglob("*.py")
-            if "tests" not in path.parts
-            and "testing" not in path.parts
-            and "__pycache__" not in path.parts
+            for path in (repository / "src").rglob("*.py")
+            if "tests" not in path.parts and "__pycache__" not in path.parts and "testing" not in path.parts
         )
-    return tuple(sorted(files))
+    )
 
 
 def _format_boundary_diff(
