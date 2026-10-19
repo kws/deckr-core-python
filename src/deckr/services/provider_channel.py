@@ -115,6 +115,7 @@ class ManagedServiceContract:
             **({"timeout": timeout_seconds} if timeout_seconds is not None else {}),
             contract=context.contract,
         )
+        await self._context()
         body = service_body(reply)
         if _is_valid_response_body(
             body,

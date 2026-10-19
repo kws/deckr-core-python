@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -1351,10 +1352,13 @@ async def test_service_use_lease_refresh_raises_unavailable_without_valid_lease(
 
 
 @pytest.mark.asyncio
-async def test_service_message_timeout_is_separate_from_service_use() -> None:
+@pytest.mark.parametrize("revoke", [False, True])
+async def test_service_request_preserves_timeout_and_rechecks_authority(revoke) -> None:
     agreement = _agreement()
 
     async def request(**kwargs):
+        if revoke:
+            agreement.state = replace(agreement.state, local_authority=False)
         return service_response_message(
             sender=service_address("demo-home"),
             sender_session_id="service-session",
@@ -1387,13 +1391,17 @@ async def test_service_message_timeout_is_separate_from_service_use() -> None:
         _descriptor(),
         timeout_seconds=30.0,
     ) as service:
-        reply = await service.request(
-            "play",
-            {"zone": "Kitchen"},
-            timeout_seconds=12.0,
-        )
+        if revoke:
+            with pytest.raises(ServiceUnavailable) as exc_info:
+                await service.request("play", {"zone": "Kitchen"}, timeout_seconds=12.0)
+            assert exc_info.value.code == "contract_local_authority_lost"
+        else:
+            reply = await service.request(
+                "play", {"zone": "Kitchen"}, timeout_seconds=12.0
+            )
+            assert reply.status == ServiceMessageStatus.OK
 
-    assert reply.status == ServiceMessageStatus.OK
+    endpoint.request.assert_awaited_once()
     assert endpoint.request.await_args.kwargs["timeout"] == 12.0
     assert endpoint.request.await_args.kwargs["contract"] == {
         "contractId": "contract-1",
@@ -1460,11 +1468,16 @@ async def test_managed_service_contract_rejects_lost_local_authority() -> None:
 
 
 @pytest.mark.asyncio
-async def test_managed_service_contract_request_validates_response_metadata() -> None:
+@pytest.mark.parametrize("revoke", [False, True])
+async def test_managed_service_contract_request_validates_response_metadata_and_authority(
+    revoke,
+) -> None:
     managed = _managed_service_contract()
     participant = _FakeManagedServiceParticipant((managed,))
 
     async def request(**kwargs):
+        if revoke:
+            participant._managed = (replace(managed, local_authority=False),)
         return service_response_message(
             sender=_CLIENT_ADDRESS,
             sender_session_id="client-session",
@@ -1496,9 +1509,15 @@ async def test_managed_service_contract_request_validates_response_metadata() ->
         service_id="demo-home",
     )
 
-    reply = await channel.request("collectDiagnostics", timeout_seconds=3.0)
+    if revoke:
+        with pytest.raises(ServiceUnavailable) as exc_info:
+            await channel.request("collectDiagnostics", timeout_seconds=3.0)
+        assert exc_info.value.code == "invalid_service_contract"
+    else:
+        reply = await channel.request("collectDiagnostics", timeout_seconds=3.0)
+        assert reply.status is ServiceMessageStatus.OK
 
-    assert reply.status is ServiceMessageStatus.OK
+    endpoint.request.assert_awaited_once()
     assert endpoint.request.await_args.kwargs["timeout"] == 3.0
     assert participant.validate_calls == []
 
@@ -1770,7 +1789,7 @@ async def test_watch_view_refreshes_lease_before_delivering_changes() -> None:
         yield SimpleNamespace(entry=SimpleNamespace(value=changed_payload))
 
     @asynccontextmanager
-    async def watch(_context, _view):
+    async def watch(_context, _view, *, require_authority=None):
         yield changes()
 
     store = SimpleNamespace(watch=watch)
@@ -1811,7 +1830,7 @@ async def test_watch_view_does_not_emit_idle_duplicate_payloads() -> None:
         yield None
 
     @asynccontextmanager
-    async def watch(context, watched_view):
+    async def watch(context, watched_view, *, require_authority=None):
         observed_watch.append((context, watched_view))
         yield changes()
 

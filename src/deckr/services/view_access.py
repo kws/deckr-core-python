@@ -17,7 +17,7 @@ from deckr.services.view_records import (
     ServiceViewWatchChange,
     ServiceViewWatchSnapshot,
 )
-from deckr.services.view_store import ServiceViewStore
+from deckr.services.view_store import AuthorityCheck, ServiceViewStore
 
 
 class ManagedServiceViewAccess:
@@ -29,13 +29,19 @@ class ManagedServiceViewAccess:
         *,
         read_context: ServiceViewReadContext | None = None,
         write_context: ServiceViewWriteContext | None = None,
+        require_authority: AuthorityCheck | None = None,
     ) -> None:
         self._store = store
         self._read_context = read_context
         self._write_context = write_context
+        self._require_authority = require_authority
 
     async def read(self, view: ServiceViewRef) -> ServiceViewEntry | None:
-        return await self._store.get(self._require_read_context(), view)
+        return await self._store.get(
+            self._require_read_context(),
+            view,
+            require_authority=self._require_authority,
+        )
 
     @asynccontextmanager
     async def watch(
@@ -44,7 +50,11 @@ class ManagedServiceViewAccess:
     ) -> AsyncIterator[
         AsyncIterator[ServiceViewWatchSnapshot | ServiceViewWatchChange]
     ]:
-        async with self._store.watch(self._require_read_context(), view) as changes:
+        async with self._store.watch(
+            self._require_read_context(),
+            view,
+            require_authority=self._require_authority,
+        ) as changes:
             yield changes
 
     async def create(
@@ -59,6 +69,7 @@ class ManagedServiceViewAccess:
             payload=payload,
             context=self._require_write_context(),
             ttl=ttl,
+            require_authority=self._require_authority,
         )
 
     async def put(
@@ -75,6 +86,7 @@ class ManagedServiceViewAccess:
             context=self._require_write_context(),
             revision=revision,
             ttl=ttl,
+            require_authority=self._require_authority,
         )
 
     async def update(
@@ -91,6 +103,7 @@ class ManagedServiceViewAccess:
             context=self._require_write_context(),
             revision=revision,
             ttl=ttl,
+            require_authority=self._require_authority,
         )
 
     async def delete(
@@ -103,6 +116,7 @@ class ManagedServiceViewAccess:
             view=view,
             context=self._require_write_context(),
             revision=revision,
+            require_authority=self._require_authority,
         )
 
     def _require_read_context(self) -> ServiceViewReadContext:

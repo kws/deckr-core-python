@@ -37,7 +37,9 @@ class _ServiceManagedServiceViewAccess(ManagedServiceViewAccess):
 
     async def read(self, view: ServiceViewRef) -> ServiceViewEntry | None:
         context = await self._contract._context()
-        return await self._store.get(context.view_read_context(), view)
+        return await self._store.get(
+            context.view_read_context(), view, require_authority=self._contract._context
+        )
 
     @asynccontextmanager
     async def watch(
@@ -47,7 +49,9 @@ class _ServiceManagedServiceViewAccess(ManagedServiceViewAccess):
         AsyncIterator[ServiceViewWatchSnapshot | ServiceViewWatchChange]
     ]:
         context = await self._contract._context()
-        async with self._store.watch(context.view_read_context(), view) as changes:
+        async with self._store.watch(
+            context.view_read_context(), view, require_authority=self._contract._context
+        ) as changes:
             yield guarded_changes(
                 changes,
                 check=self._contract._context,
@@ -67,6 +71,7 @@ class _ServiceManagedServiceViewAccess(ManagedServiceViewAccess):
             payload=payload,
             context=context.view_write_context(),
             ttl=ttl,
+            require_authority=self._contract._context,
         )
 
     async def put(
@@ -84,6 +89,7 @@ class _ServiceManagedServiceViewAccess(ManagedServiceViewAccess):
             context=context.view_write_context(),
             revision=revision,
             ttl=ttl,
+            require_authority=self._contract._context,
         )
 
     async def update(
@@ -101,6 +107,7 @@ class _ServiceManagedServiceViewAccess(ManagedServiceViewAccess):
             context=context.view_write_context(),
             revision=revision,
             ttl=ttl,
+            require_authority=self._contract._context,
         )
 
     async def delete(
@@ -114,6 +121,7 @@ class _ServiceManagedServiceViewAccess(ManagedServiceViewAccess):
             view=view,
             context=context.view_write_context(),
             revision=revision,
+            require_authority=self._contract._context,
         )
 
 
@@ -130,6 +138,7 @@ class _LeaseManagedServiceViewAccess(ManagedServiceViewAccess):
             store,
             read_context=read_context,
             write_context=write_context,
+            require_authority=lease.require_authority,
         )
         self._lease = lease
 

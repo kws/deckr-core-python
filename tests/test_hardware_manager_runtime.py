@@ -15,6 +15,7 @@ from deckr.concord import (
     CONCORD_TOKEN_BUCKET_POLICY,
     Concord,
     ConcordLifecyclePhase,
+    ConcordParticipantCandidate,
     ContractValidityStatus,
 )
 from deckr.contracts.messages import controller_address, hardware_manager_address
@@ -43,6 +44,21 @@ def _descriptor(
     payload["deviceId"] = device_id
     if fingerprint is not None:
         payload["fingerprint"] = fingerprint
+    return DeviceDescriptor.model_validate(payload)
+
+
+def _replacement_descriptor(change: str) -> DeviceDescriptor:
+    payload = stream_deck_bitmap_grid()
+    if change == "fingerprint":
+        payload["fingerprint"] = "usb:0fd9:0063:stream-deck-mini-replacement"
+    elif change == "control":
+        payload["controls"].pop()
+    elif change == "capability":
+        payload["controls"][-1]["outputCapabilities"] = []
+    else:
+        assert change == "label"
+        payload["displayName"] = "My desk"
+        payload["controls"][-1]["label"] = "My button"
     return DeviceDescriptor.model_validate(payload)
 
 
@@ -591,7 +607,8 @@ async def test_command_rejection_wire_replies_match_runtime_contract() -> None:
         await controller_cm.__aexit__(None, None, None)
 
 
-async def test_set_device_replacement_cancels_live_claim_and_resets() -> None:
+@pytest.mark.parametrize("change", ["fingerprint", "control", "capability", "label"])
+async def test_set_device_replacement_cancels_live_claim_and_resets(change) -> None:
     reset_devices: list[str] = []
 
     async def reset_handler(device_id: str) -> None:
@@ -615,10 +632,17 @@ async def test_set_device_replacement_cancels_live_claim_and_resets() -> None:
             await concord._validate(contract)
         ).status == ContractValidityStatus.VALID
 
-        replacement = _descriptor(
-            fingerprint="usb:0fd9:0063:stream-deck-mini-replacement"
-        )
+        replacement = _replacement_descriptor(change)
         await runtime.set_device(replacement)
+
+        if change == "label":
+            assert (await concord._validate(contract)).valid
+            assert runtime.live_claims and reset_devices == []
+            assert (
+                _advertised_payload(deckr).devices[replacement.device_id].descriptor
+                == replacement
+            )
+            return
 
         record = await concord._contract_record(contract)
         assert record is not None
@@ -640,7 +664,10 @@ async def test_set_device_replacement_cancels_live_claim_and_resets() -> None:
         await controller_cm.__aexit__(None, None, None)
 
 
-async def test_replace_devices_replacement_cancels_live_claim_and_resets() -> None:
+@pytest.mark.parametrize("change", ["fingerprint", "control", "capability", "label"])
+async def test_replace_devices_replacement_cancels_live_claim_and_resets(
+    change,
+) -> None:
     reset_devices: list[str] = []
 
     async def reset_handler(device_id: str) -> None:
@@ -664,10 +691,17 @@ async def test_replace_devices_replacement_cancels_live_claim_and_resets() -> No
             await concord._validate(contract)
         ).status == ContractValidityStatus.VALID
 
-        replacement = _descriptor(
-            fingerprint="usb:0fd9:0063:stream-deck-mini-replacement"
-        )
+        replacement = _replacement_descriptor(change)
         await runtime.replace_devices({"stream-deck-mini": replacement})
+
+        if change == "label":
+            assert (await concord._validate(contract)).valid
+            assert runtime.live_claims and reset_devices == []
+            assert (
+                _advertised_payload(deckr).devices[replacement.device_id].descriptor
+                == replacement
+            )
+            return
 
         record = await concord._contract_record(contract)
         assert record is not None
@@ -878,3 +912,129 @@ async def test_cached_hardware_claim_cannot_authorize_while_reconciliation_is_bl
         await runtime.stop()
         await endpoint_cm.__aexit__(None, None, None)
         await controller_cm.__aexit__(None, None, None)
+
+
+@pytest.mark.parametrize(
+    "instance_count,extra_participant,accepted",
+    [(1, False, True), (2, False, False), (1, True, False)],
+)
+async def test_hardware_admission_enforces_capacity_and_exact_participants(
+    instance_count, extra_participant, accepted
+):
+    deckr, endpoint_cm, runtime = await _runtime(start_runtime=False)
+    concord = _concord(deckr)
+    try:
+        descriptor = _descriptor()
+        await runtime.set_device(descriptor)
+        controller = controller_address("controller-main")
+        participants = [controller, runtime.endpoint.address]
+        if extra_participant:
+            participants.append(controller_address("extra"))
+        terms = HardwareClaimTerms(
+            claimId="admission-probe",
+            controllerEndpoint=controller,
+            managerEndpoint=runtime.endpoint.address,
+            devices=(
+                HardwareClaimDevice(
+                    deviceRef=DeviceRef(
+                        managerId=runtime.manager_id,
+                        deviceId=descriptor.device_id,
+                        fingerprint=descriptor.fingerprint,
+                    ),
+                    instanceCount=instance_count,
+                ),
+            ),
+        )
+        contract = await concord._create_contract(
+            participants,
+            contract_id="admission-probe",
+            profile=HARDWARE_CLAIM_PROFILE_ID,
+            terms=terms,
+            created_by=controller,
+        )
+        record = await concord._contract_record(contract)
+        candidate = ConcordParticipantCandidate(
+            contract=contract,
+            record=record,
+            validity=await concord._validate(contract),
+            managed=False,
+        )
+        selection = runtime._select_claim_contracts((candidate,))
+        assert (contract.pointer in selection.accepted) is accepted
+    finally:
+        await runtime.stop()
+        await endpoint_cm.__aexit__(None, None, None)
+
+
+@pytest.mark.parametrize("kind", ["command", "state_request", "input"])
+@pytest.mark.parametrize("fingerprint", [None, "current", "other-device"])
+async def test_hardware_operations_validate_device_fingerprint(kind, fingerprint):
+    delivered = []
+
+    async def command_handler(message):
+        delivered.append(message)
+        return True
+
+    deckr, endpoint_cm, runtime = await _runtime(command_handler=command_handler)
+    controller_cm = deckr.endpoint(controller_address("controller-main"))
+    controller = await controller_cm.__aenter__()
+    concord = _concord(deckr)
+    try:
+        descriptor = _descriptor()
+        await runtime.set_device(descriptor)
+        contract = await _claim(runtime, concord)
+        await concord._attach(contract, controller.address, controller.session_id)
+        await _wait_for_live_claim(runtime, concord, contract)
+        if kind == "command":
+            message = hw_messages.control_command_message(
+                controller_id="controller-main",
+                sender_session_id=controller.session_id,
+                manager_id=runtime.manager_id,
+                device_id=descriptor.device_id,
+                control_id="key.0.0",
+                capability_id="raster.bitmap",
+                command_type="clear",
+                contract=_contract_pointer(contract),
+            )
+        elif kind == "state_request":
+            message = _capability_state_request_message(
+                sender_session_id=controller.session_id, contract=contract
+            )
+        else:
+            message = hw_messages.control_input_message(
+                manager_id=runtime.manager_id,
+                sender_session_id=runtime.endpoint.session_id,
+                device_id=descriptor.device_id,
+                fingerprint=descriptor.fingerprint,
+                control_id="key.0.0",
+                capability_id="button.press",
+                event_type="press",
+                value={"eventType": "press"},
+            )
+        body = hw_messages.hardware_body_to_dict(
+            hw_messages.hardware_body_from_message(message)
+        )
+        if fingerprint is None:
+            body["deviceRef"].pop("fingerprint", None)
+        else:
+            body["deviceRef"]["fingerprint"] = (
+                descriptor.fingerprint if fingerprint == "current" else fingerprint
+            )
+        message = message.model_copy(update={"body": body})
+        deckr._message_bus.publish.reset_mock()
+        dispatch = (
+            runtime.handle_hardware_message
+            if kind == "input"
+            else runtime._handle_command
+        )
+        assert await dispatch(message) is (fingerprint != "other-device")
+        if kind == "input":
+            assert deckr._message_bus.publish.await_count == (
+                0 if fingerprint == "other-device" else 1
+            )
+        else:
+            assert len(delivered) == (0 if fingerprint == "other-device" else 1)
+    finally:
+        await runtime.stop()
+        await controller_cm.__aexit__(None, None, None)
+        await endpoint_cm.__aexit__(None, None, None)

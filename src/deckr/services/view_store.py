@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -40,9 +40,16 @@ from deckr.services.view_records import (
     logger,
 )
 
+AuthorityCheck = Callable[[], Awaitable[object]]
+
 
 class ServiceViewStore:
-    """Exact fenced service-view store with a coalesced materialized read model."""
+    """Exact fenced service-view store with a coalesced materialized read model.
+
+    Managed callers supply a local ``require_authority`` check. It runs after
+    readiness waits, immediately before cached access or an exact mutation;
+    immutable fence fields alone do not establish live agreement authority.
+    """
 
     def __init__(
         self,
@@ -101,9 +108,13 @@ class ServiceViewStore:
         self,
         context: ServiceViewReadContext,
         view: ServiceViewRef,
+        *,
+        require_authority: AuthorityCheck | None = None,
     ) -> ServiceViewEntry | None:
         self._assert_read_authorized(context, view)
         await self.wait_current()
+        if require_authority is not None:
+            await require_authority()
         entry = self._entries.get(_storage_key_for_context(view, context))
         if entry is None or not _entry_matches_read_context(entry, context):
             return None
@@ -117,10 +128,13 @@ class ServiceViewStore:
         context: ServiceViewWriteContext,
         revision: int | None = None,
         ttl: float | None = None,
+        require_authority: AuthorityCheck | None = None,
     ) -> ServiceViewEntry:
         self._assert_write_authorized(context, view)
         if self._started:
             await self.wait_current()
+        if require_authority is not None:
+            await require_authority()
         storage_key = _storage_key(view.key, context.contract)
         value = _fenced_payload(payload, view_key=view.key, context=context)
         entry = (
@@ -156,10 +170,13 @@ class ServiceViewStore:
         payload: Mapping[str, Any],
         context: ServiceViewWriteContext,
         ttl: float | None = None,
+        require_authority: AuthorityCheck | None = None,
     ) -> ServiceViewEntry:
         self._assert_write_authorized(context, view)
         if self._started:
             await self.wait_current()
+        if require_authority is not None:
+            await require_authority()
         storage_key = _storage_key(view.key, context.contract)
         value = _fenced_payload(payload, view_key=view.key, context=context)
         entry = await self._exact.create(storage_key, value, ttl=ttl)
@@ -186,6 +203,7 @@ class ServiceViewStore:
         context: ServiceViewWriteContext,
         revision: int,
         ttl: float | None = None,
+        require_authority: AuthorityCheck | None = None,
     ) -> ServiceViewEntry:
         return await self.put(
             view=view,
@@ -193,6 +211,7 @@ class ServiceViewStore:
             context=context,
             revision=revision,
             ttl=ttl,
+            require_authority=require_authority,
         )
 
     async def delete(
@@ -201,10 +220,13 @@ class ServiceViewStore:
         view: ServiceViewRef,
         context: ServiceViewWriteContext,
         revision: int | None = None,
+        require_authority: AuthorityCheck | None = None,
     ) -> None:
         self._assert_write_authorized(context, view)
         if self._started:
             await self.wait_current()
+        if require_authority is not None:
+            await require_authority()
         storage_key = _storage_key(view.key, context.contract)
         marker_revision = await self._exact.delete(storage_key, revision=revision)
         if marker_revision is None:
@@ -237,11 +259,15 @@ class ServiceViewStore:
         self,
         context: ServiceViewReadContext,
         view: ServiceViewRef,
+        *,
+        require_authority: AuthorityCheck | None = None,
     ) -> AsyncIterator[
         AsyncIterator[ServiceViewWatchSnapshot | ServiceViewWatchChange]
     ]:
         self._assert_read_authorized(context, view)
         await self.wait_current()
+        if require_authority is not None:
+            await require_authority()
         fence = _read_fence(context)
         storage_key = _storage_key_for_context(view, context)
         async with self._state.subscribe(

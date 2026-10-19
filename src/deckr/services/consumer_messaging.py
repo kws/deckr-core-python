@@ -107,6 +107,7 @@ class ServiceConsumerMessaging:
             **({"timeout": timeout_seconds} if timeout_seconds is not None else {}),
             contract=_contract_pointer(lease),
         )
+        await lease.require_authority()
         body = service_body(reply)
         if _is_valid_response_body(body, descriptor.namespace, name, definition):
             _assert_response_envelope(

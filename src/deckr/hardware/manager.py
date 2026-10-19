@@ -25,6 +25,11 @@ from deckr.contracts.authority import ContractPointer
 from deckr.contracts.messages import HARDWARE_MESSAGES_LANE, DeckrMessage
 from deckr.contracts.models import JsonObject, thaw_json
 from deckr.core.kv import KvConflict, KvUnavailable
+from deckr.hardware.claim_policy import (
+    claim_matches_inventory,
+    descriptor_requires_new_claim,
+    device_reference_matches,
+)
 from deckr.hardware.claims import (
     LiveHardwareClaim,
     _ClaimCandidate,
@@ -92,8 +97,8 @@ class HardwareManagerRuntime:
 
     async def set_device(self, descriptor: DeviceDescriptor) -> None:
         previous = self._devices.get(descriptor.device_id)
-        replaced = (
-            previous is not None and previous.fingerprint != descriptor.fingerprint
+        replaced = previous is not None and descriptor_requires_new_claim(
+            previous, descriptor
         )
         self._devices[descriptor.device_id] = descriptor
         if replaced:
@@ -170,7 +175,9 @@ class HardwareManagerRuntime:
         replaced_device_ids = sorted(
             device_id
             for device_id in set(previous) & set(next_devices)
-            if previous[device_id].fingerprint != next_devices[device_id].fingerprint
+            if descriptor_requires_new_claim(
+                previous[device_id], next_devices[device_id]
+            )
         )
         self._devices = next_devices
         for device_id in [*removed_device_ids, *replaced_device_ids]:
@@ -203,7 +210,7 @@ class HardwareManagerRuntime:
             hw_messages.ControlInputMessage | hw_messages.CapabilityStateChangedMessage,
         ):
             return False
-        if ref.device_id not in self._devices:
+        if not device_reference_matches(ref, self.endpoint.address, self._devices):
             logger.debug(
                 "Dropping input/state for unknown hardware device %s/%s",
                 ref.manager_id,
@@ -249,7 +256,7 @@ class HardwareManagerRuntime:
             | hw_messages.CapabilityStateRequestMessage,
         ):
             return False
-        if ref.device_id not in self._devices:
+        if not device_reference_matches(ref, self.endpoint.address, self._devices):
             await reject_hardware_command(self.endpoint, envelope, body, reason="stale")
             return False
         claim = await self._command_claim(ref.device_id, envelope)
@@ -456,7 +463,12 @@ class HardwareManagerRuntime:
         managed: Iterable[Any],
     ) -> dict[str, _ClaimCandidate]:
         candidates: dict[str, _ClaimCandidate] = {}
-        for managed_contract in managed:
+        for observed in managed:
+            # A queued snapshot can predate a device-change cancellation. Never
+            # reinstall a claim from authority captured before acquiring the lock.
+            managed_contract = self._claim_manager.managed_contract(observed.contract)
+            if managed_contract is None:
+                continue
             validity = managed_contract.validity
             record = managed_contract.record
             if record is None or record.state != ContractState.OPEN:
@@ -465,11 +477,12 @@ class HardwareManagerRuntime:
                 terms = HardwareClaimTerms.from_wire(thaw_json(record.terms or {}))
             except ValueError:
                 continue
-            if not self._claim_terms_match_current_devices(terms):
-                continue
-            if self.endpoint.address not in managed_contract.contract.participants:
-                continue
-            if terms.controller_endpoint not in managed_contract.contract.participants:
+            if not claim_matches_inventory(
+                terms,
+                managed_contract.contract.participants,
+                self.endpoint.address,
+                self._devices,
+            ):
                 continue
             candidates[managed_contract.contract.key] = _ClaimCandidate(
                 contract=managed_contract.contract,
@@ -485,23 +498,6 @@ class HardwareManagerRuntime:
             )
         return candidates
 
-    def _claim_terms_match_current_devices(
-        self,
-        terms: HardwareClaimTerms,
-    ) -> bool:
-        if terms.manager_endpoint != self.endpoint.address:
-            return False
-        for claim_device in terms.devices:
-            ref = claim_device.device_ref
-            descriptor = self._devices.get(ref.device_id)
-            if descriptor is None:
-                return False
-            if ref.manager_id != self.manager_id:
-                return False
-            if ref.fingerprint not in {None, descriptor.fingerprint}:
-                return False
-        return True
-
     def _select_claim_contracts(
         self,
         candidates: tuple[ConcordParticipantCandidate, ...],
@@ -514,10 +510,11 @@ class HardwareManagerRuntime:
                 )
             except ValueError:
                 continue
-            if not (
-                self._claim_terms_match_current_devices(terms)
-                and self.endpoint.address in candidate.contract.participants
-                and terms.controller_endpoint in candidate.contract.participants
+            if not claim_matches_inventory(
+                terms,
+                candidate.contract.participants,
+                self.endpoint.address,
+                self._devices,
             ):
                 continue
             parsed[candidate.contract.key] = (candidate, terms)

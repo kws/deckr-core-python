@@ -56,6 +56,7 @@ class ServiceConsumerViews:
             payload=payload,
             context=self._consumer_view_write_context(lease),
             ttl=ttl,
+            require_authority=lease.require_authority,
         )
 
     async def _put_view(
@@ -76,6 +77,7 @@ class ServiceConsumerViews:
             context=self._consumer_view_write_context(lease),
             revision=revision,
             ttl=ttl,
+            require_authority=lease.require_authority,
         )
 
     async def _update_view(
@@ -96,6 +98,7 @@ class ServiceConsumerViews:
             context=self._consumer_view_write_context(lease),
             revision=revision,
             ttl=ttl,
+            require_authority=lease.require_authority,
         )
 
     async def _delete_view(
@@ -112,6 +115,7 @@ class ServiceConsumerViews:
             view=view,
             context=self._consumer_view_write_context(lease),
             revision=revision,
+            require_authority=lease.require_authority,
         )
 
     async def _read_view(
@@ -130,6 +134,7 @@ class ServiceConsumerViews:
             entry = await self._view_store(view.store_name).get(
                 self._consumer_view_read_context(lease),
                 view,
+                require_authority=lease.require_authority,
             )
         except KvUnavailable as exc:
             raise _service_view_unavailable(view) from exc
@@ -154,6 +159,7 @@ class ServiceConsumerViews:
             async with store.watch(
                 self._consumer_view_read_context(lease),
                 view,
+                require_authority=lease.require_authority,
             ) as changes:
                 async for snapshot in guarded_changes(
                     changes,
