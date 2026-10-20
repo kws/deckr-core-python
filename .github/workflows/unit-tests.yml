@@ -4,13 +4,31 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      DECKR_SPEC_ROOT: ${{ github.workspace }}/.deckr-spec
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Read specification revision
+        id: spec
+        run: echo "revision=$(cat .deckr-spec-revision)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out specification
+        uses: actions/checkout@v6
+        with:
+          repository: kws/deckr
+          ref: ${{ steps.spec.outputs.revision }}
+          path: .deckr-spec
+          token: ${{ secrets.DECKR_SPEC_TOKEN || github.token }}
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -37,6 +55,9 @@ jobs:
           --cov-report=term-missing
           --cov-report=xml
           --cov-report=json:coverage.json
+
+      - name: Check pinned specification conformance
+        run: uv run python scripts/check_spec_conformance.py
 
       - name: Report lifecycle branch coverage
         run: uv run python scripts/report_lifecycle_branch_coverage.py coverage.json

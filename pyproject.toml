@@ -74,6 +74,7 @@ packages = ["src/deckr"]
 
 [tool.hatch.build.targets.sdist]
 include = [
+    "/.deckr-spec-revision",
     "/AGENTS.md",
     "/LICENSE",
     "/README.md",

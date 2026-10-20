@@ -44,6 +44,9 @@ device-manager-specific behavior here. That belongs in the
   - Tests for this Python package only; do not scan other repositories.
 - `scripts`
   - Python implementation diagnostics and validation tooling.
+  - `check_spec_conformance.py` reads upstream fixtures and vectors directly from
+    `../deckr` or `DECKR_SPEC_ROOT`. CI checks out `.deckr-spec-revision`; keep
+    upstream artifacts external and ordinary unit tests checkout-independent.
 
 ## Placement Rules
 

@@ -16,18 +16,46 @@ They do not replace the reference repository’s conformance vectors.
 ## Reference material
 
 - [Reference overview](https://github.com/kws/deckr#readme)
-- [Schema consumption](https://github.com/kws/deckr/blob/main/docs/schemas.md)
+- [Schema consumption](https://github.com/kws/deckr/blob/main/docs/schema-guide.md)
 - [Architecture](https://github.com/kws/deckr/blob/main/docs/deckr-architecture.md)
 - [Beacon](https://github.com/kws/deckr/blob/main/docs/beacon.md),
   [Concord](https://github.com/kws/deckr/blob/main/docs/concord.md), and
-  [NATS](https://github.com/kws/deckr/blob/main/docs/nats.md)
-- [Migration guide](https://github.com/kws/deckr/blob/main/docs/migration-guide.md)
+  [NATS](https://github.com/kws/deckr/blob/main/docs/deckr-nats-binding.md)
+- [Conformance scenarios](https://github.com/kws/deckr/blob/main/deckr-conformance-scenarios.md)
 
 The Python distribution does not bundle or generate reference artifacts.
 The former `deckr.contracts.artifacts` module and its exports from
 `deckr.contracts` have been removed with that bundle. Obtain reference artifacts
-from the reference repository and pin an appropriate commit or release when
-consuming them.
+from the reference repository at the revision recorded in
+[.deckr-spec-revision](.deckr-spec-revision).
+
+## Specification dependency
+
+CI checks out the immutable `kws/deckr` commit in `.deckr-spec-revision` and runs
+`scripts/check_spec_conformance.py` against its artifacts. The script compares
+Python key encoding, Beacon/Concord keys, terms hashing, NATS message mapping,
+settings target keys, and protocol record validation with upstream vectors and
+positive/negative fixtures. These checks cover those implemented cases; they do
+not establish complete protocol or distributed lifecycle conformance.
+
+To reproduce CI without changing an existing sibling specification checkout:
+
+```bash
+git clone https://github.com/kws/deckr.git .deckr-spec
+git -C .deckr-spec checkout --detach "$(cat .deckr-spec-revision)"
+DECKR_SPEC_ROOT="$PWD/.deckr-spec" uv run python scripts/check_spec_conformance.py
+```
+
+The script defaults to `../deckr`; `DECKR_SPEC_ROOT` selects another repository
+root containing `contract/v1/`. Missing artifacts fail the check. Local checks
+use the selected checkout as it stands, allowing upstream changes to be tested
+before updating the pin. Ordinary unit tests remain independent of that checkout.
+
+When updating the pin, review upstream changes, run this check and the Python
+validation suite, and coordinate the revision with the Rust and TypeScript
+implementations. Push the upstream commit before CI needs it. For a private
+`kws/deckr` repository, configure the `DECKR_SPEC_TOKEN` Actions secret with read
+access; otherwise CI uses its default GitHub token.
 
 ## Repository layout
 
@@ -35,6 +63,7 @@ consuming them.
 src/deckr/    Python package: runtime, wire models, services, hardware, and testing helpers
 tests/        Python implementation tests
 scripts/      Python diagnostics and lifecycle coverage checks
+.deckr-spec-revision  Specification commit used by CI
 pyproject.toml
 uv.lock
 ```
@@ -61,6 +90,7 @@ uv run ruff format --check .
 uv run lint-imports
 uv run pytest --cov-branch --cov-report=json:coverage.json
 uv run python scripts/report_lifecycle_branch_coverage.py coverage.json
+uv run python scripts/check_spec_conformance.py
 ```
 
 Focused protocol tests can use `MemoryJsonKvBucket`, `ConcordRuntimeHarness`,
