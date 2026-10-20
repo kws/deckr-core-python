@@ -183,9 +183,12 @@ class ManagedService:
         params: Mapping[str, Any] | None = None,
         *,
         event: Mapping[str, Any] | None = None,
+        causation_id: str | None = None,
     ) -> Any:
         lease = self._require_ready()
-        return await self._client._send(lease, name, params, event=event)
+        return await self._client._send(
+            lease, name, params, event=event, causation_id=causation_id
+        )
 
     async def request(
         self,

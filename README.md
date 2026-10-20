@@ -49,7 +49,7 @@ from the reference repository at the revision recorded in
 
 ## Specification dependency
 
-The core now targets the reviewed `1.0.0-alpha.2` Action Runtime contract.
+The core targets the `1.0.0-alpha.3` Action Runtime contract.
 Page commands require explicit `BindingCommandTarget` or
 `PageSessionCommandTarget` values from `deckr.actions.messages`; `close_page`
 uses `ClosePageBody`, and page-session metadata requires `generation`.
@@ -69,6 +69,15 @@ must supply current agreement, session, claim, and target observations and call
 the helper again while committing a serialized transition. The helper does not
 allocate pages or acquire authority.
 
+`deckr.actions.rendering` defines support, baseline content, `BindingRenderBody`,
+and `BindingRenderResultBody`. `validate_rendering_support` checks named matches
+and aliases; `validate_render_command` checks current `RenderCommandContext`
+facts and admission limits. Controllers must recheck these facts at dispatch.
+Image decoding, font choice, rendering, and output ordering belong to controllers.
+`DeckrMessage.wire_size_bytes` preserves the received UTF-8 envelope size on NATS.
+Managed service sends accept `causation_id`, and hardware commands accept a
+reserved `message_id` for registering rejection correlation before publication.
+
 Hardware discovery candidates expose immutable manager `labels` snapshots.
 Managed claim events include `CommandRejectedMessage` with the original envelope
 and correlation; a rejection alone leaves claim authority intact.
@@ -78,7 +87,7 @@ Use managed operations to check current authority when acting on that observatio
 CI checks out the immutable `kws/deckr` commit in `.deckr-spec-revision` and runs
 `scripts/check_spec_conformance.py` against its artifacts. The script compares
 Python key encoding, Beacon/Concord keys, terms hashing, NATS message mapping,
-settings target keys, protocol records, and Action Runtime matching/page semantics
+settings target keys, protocol records, and Action Runtime matching, page, and rendering admission semantics
 with upstream vectors and positive/negative fixtures. These checks cover those
 implemented cases; they do not establish complete protocol or distributed
 lifecycle conformance.

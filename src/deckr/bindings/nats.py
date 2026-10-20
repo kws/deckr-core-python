@@ -328,8 +328,7 @@ class DeckrNatsSubstrate:
 
     def _message_from_nats(self, msg) -> DeckrMessage:
         try:
-            raw = json.loads(msg.data.decode("utf-8"))
-            message = DeckrMessage.from_dict(raw)
+            message = DeckrMessage.from_bytes(msg.data)
         except (UnicodeDecodeError, json.JSONDecodeError, ValidationError) as exc:
             raise ValueError("NATS message payload is not a Deckr envelope") from exc
         _validate_subject_hint(msg.subject, message)

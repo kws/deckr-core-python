@@ -22,13 +22,16 @@ from deckr.actions.pages import (
     OpenPageBody,
     ReplacePageBody,
 )
+from deckr.actions.rendering import BindingRenderResultBody
 from deckr.contracts.messages import ContractPointer, DeckrMessage
 from deckr.contracts.models import DeckrModel, thaw_json
 from deckr.hardware.descriptors import DeviceRef
 from deckr.services import ServiceMessageBody
 
 
-def validate_action_runtime_message(message: DeckrMessage) -> None:
+def validate_action_runtime_message(
+    message: DeckrMessage, *, validate_payload: bool = True
+) -> None:
     """Validate the typed payload, operation direction, and service subject."""
     body = ServiceMessageBody.from_wire(message.body)
     if (
@@ -76,7 +79,14 @@ def validate_action_runtime_message(message: DeckrMessage) -> None:
             )
     elif body.event is not None:
         raise ValueError("Action Runtime commands cannot carry event payloads")
+    if not validate_payload:
+        return
     payload = action_runtime_body_from_service_message(body)
+    if (
+        isinstance(payload, BindingRenderResultBody)
+        and message.causation_id != payload.request_message_id
+    ):
+        raise ValueError("render result causation must identify its request")
     for field in ("metadata", "binding", "page_session", "action_instance"):
         metadata = getattr(payload, field, None)
         if (

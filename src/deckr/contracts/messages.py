@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from collections.abc import Mapping
@@ -7,7 +8,13 @@ from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import Annotated, Any, Literal
 
-from pydantic import Field, field_serializer, field_validator, model_validator
+from pydantic import (
+    Field,
+    PrivateAttr,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from deckr.contracts.authority import ContractPointer
 from deckr.contracts.models import DeckrModel, JsonObject, freeze_json, thaw_json
@@ -296,6 +303,31 @@ class TraceContext(DeckrModel):
 
 class DeckrMessage(DeckrModel):
     """Transport-neutral Deckr logical message envelope."""
+
+    _received_size: int | None = PrivateAttr(default=None)
+
+    def __eq__(self, other: object) -> bool:
+        # Transport observations are not part of logical message identity.
+        if not isinstance(other, DeckrMessage):
+            return NotImplemented
+        return type(self) is type(other) and self.__dict__ == other.__dict__
+
+    @property
+    def wire_size_bytes(self) -> int:
+        """Received envelope bytes, or the compact UTF-8 size for local messages."""
+        if self._received_size is not None:
+            return self._received_size
+        return len(
+            json.dumps(
+                self.to_dict(), ensure_ascii=False, separators=(",", ":")
+            ).encode("utf-8")
+        )
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> DeckrMessage:
+        message = cls.from_wire(json.loads(data.decode("utf-8")))
+        message._received_size = len(data)
+        return message
 
     message_id: str = Field(default_factory=_new_message_id, alias="messageId")
     protocol_version: Literal["1"] = Field(

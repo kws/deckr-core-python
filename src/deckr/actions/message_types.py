@@ -15,6 +15,7 @@ from deckr.actions.lifecycle import (
     PageSessionLifecycleBody,
 )
 from deckr.actions.pages import ClosePageBody, OpenPageBody, ReplacePageBody
+from deckr.actions.rendering import BindingRenderBody, BindingRenderResultBody
 
 ACTION_INSTANCE_CREATED = "actionInstanceCreated"
 
@@ -41,6 +42,8 @@ CAPABILITY_INPUT = "capabilityInput"
 
 
 BINDING_OUTPUT = "bindingOutput"
+BINDING_RENDER = "bindingRender"
+BINDING_RENDER_RESULT = "bindingRenderResult"
 
 
 BINDING_OVERLAY = "bindingOverlay"
@@ -64,6 +67,7 @@ ACTION_EXTENSION = "actionExtension"
 ACTION_PROVIDER_COMMAND_MESSAGE_TYPES = frozenset(
     {
         BINDING_OUTPUT,
+        BINDING_RENDER,
         BINDING_OVERLAY,
         BINDING_OVERLAY_CLEAR,
     }
@@ -95,6 +99,8 @@ ACTION_BODY_BY_MESSAGE_TYPE: dict[str, type[ActionMessageBody]] = {
     ACTION_LIFECYCLE_REJECTED: ActionLifecycleRejectedBody,
     CAPABILITY_INPUT: CapabilityInputBody,
     BINDING_OUTPUT: BindingOutputBody,
+    BINDING_RENDER: BindingRenderBody,
+    BINDING_RENDER_RESULT: BindingRenderResultBody,
     BINDING_OVERLAY: BindingOverlayBody,
     BINDING_OVERLAY_CLEAR: BindingOverlayClearBody,
     OPEN_PAGE: OpenPageBody,

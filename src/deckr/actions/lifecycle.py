@@ -23,6 +23,7 @@ from deckr.actions.bindings import (
     CapabilityInputEvent,
     PageSessionMetadata,
 )
+from deckr.actions.rendering import RenderingSupport
 from deckr.contracts.models import JsonObject, freeze_json, thaw_json
 from deckr.hardware.descriptors import CapabilityRef
 
@@ -34,6 +35,15 @@ class ActionInstanceLifecycleBody(ActionMessageBody):
 
 class BindingAttachedBody(ActionMessageBody):
     binding: BindingMetadata
+    rendering: RenderingSupport | None = None
+
+    @field_validator("rendering", mode="before")
+    @classmethod
+    def _rendering_not_null(cls, value: Any) -> Any:
+        if value is None:
+            raise ValueError("rendering cannot be null")
+        return value
+
     settings: JsonObject = Field(default_factory=dict)
     internal: JsonObject = Field(default_factory=dict)
 

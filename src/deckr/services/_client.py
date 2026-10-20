@@ -417,8 +417,11 @@ class DeckrServices:
         params: Mapping[str, Any] | None = None,
         *,
         event: Mapping[str, Any] | None = None,
+        causation_id: str | None = None,
     ) -> Any:
-        return await self._messaging._send(lease, name, params, event=event)
+        return await self._messaging._send(
+            lease, name, params, event=event, causation_id=causation_id
+        )
 
     async def _request(
         self,

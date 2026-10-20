@@ -17,6 +17,8 @@ from deckr.action_runtime.protocol import (
     BINDING_OUTPUT_MESSAGE as BINDING_OUTPUT_MESSAGE,
     BINDING_OVERLAY_CLEAR_MESSAGE as BINDING_OVERLAY_CLEAR_MESSAGE,
     BINDING_OVERLAY_MESSAGE as BINDING_OVERLAY_MESSAGE,
+    BINDING_RENDER_MESSAGE as BINDING_RENDER_MESSAGE,
+    BINDING_RENDER_RESULT_MESSAGE as BINDING_RENDER_RESULT_MESSAGE,
     CAPABILITY_INPUT_MESSAGE as CAPABILITY_INPUT_MESSAGE,
     CLOSE_PAGE_MESSAGE as CLOSE_PAGE_MESSAGE,
     COMMAND_MESSAGES as COMMAND_MESSAGES,
@@ -38,6 +40,14 @@ from deckr.action_runtime.protocol import (
     action_runtime_service_id as action_runtime_service_id,
     action_runtime_service_protocol as action_runtime_service_protocol,
     legacy_action_message_type as legacy_action_message_type,
+)
+from deckr.action_runtime.rendering import (
+    RenderBindingState as RenderBindingState,
+    RenderCommandContext as RenderCommandContext,
+    RenderRejection as RenderRejection,
+    render_match as render_match,
+    validate_render_command as validate_render_command,
+    validate_rendering_support as validate_rendering_support,
 )
 from deckr.action_runtime.validation import (
     PageCommandContext as PageCommandContext,

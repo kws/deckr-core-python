@@ -36,6 +36,7 @@ class ServiceConsumerMessaging:
         params: Mapping[str, Any] | None = None,
         *,
         event: Mapping[str, Any] | None = None,
+        causation_id: str | None = None,
     ) -> Any:
         """Send an authorized one-way service message over the services lane."""
 
@@ -48,6 +49,7 @@ class ServiceConsumerMessaging:
         await lease.require_authority()
         descriptor = lease.descriptor
         return await self._endpoint.send(
+            causation_id=causation_id,
             lane=SERVICES_LANE,
             recipient=descriptor.endpoint,
             recipient_session_id=descriptor.session_id,

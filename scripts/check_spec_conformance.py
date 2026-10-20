@@ -202,13 +202,46 @@ def check_action_runtime_semantics() -> int:
         else:
             valid = True
         equal(valid, case["semanticValid"], case["id"])
-    return len(vectors["cases"])
+    from deckr.action_runtime import (
+        RenderCommandContext,
+        RenderRejection,
+        validate_render_command,
+    )
+
+    rendering = artifact("vectors/action-runtime-rendering.v1.json")
+    for case in rendering["cases"]:
+        code = None
+        try:
+            validate_render_command(
+                DeckrMessage.from_wire(case["instance"]),
+                RenderCommandContext.model_validate(case["context"]),
+            )
+        except RenderRejection as exc:
+            code = exc.code
+        equal(code is None, case["semanticValid"], case["id"])
+        equal(code, case["expectedCode"], case["id"] + " code")
+    return len(vectors["cases"]) + len(rendering["cases"])
 
 
 def check_action_runtime_fixtures() -> int:
+    from deckr.action_runtime import (
+        validate_action_runtime_message,
+        validate_rendering_support,
+    )
     from deckr.actions import messages
+    from deckr.actions.lifecycle import BindingAttachedBody
 
     names = (
+        "render-limits",
+        "render-text",
+        "render-image",
+        "render-format",
+        "render-target-support",
+        "rendering-support",
+        "render-content",
+        "binding-render-body",
+        "binding-render-result-body",
+        "binding-attached-body",
         "binding-command-target",
         "page-session-command-target",
         "open-page-body",
@@ -228,10 +261,25 @@ def check_action_runtime_fixtures() -> int:
     }
     count = 0
     for entry in artifact("manifest.json")["artifacts"]:
-        if entry["kind"] != "fixture" or entry.get("schemaPath") not in models:
+        if entry["kind"] != "fixture":
+            continue
+        schema = entry.get("schemaPath", "")
+        full_message = schema in {
+            f"schemas/deckr/action-runtime/messages/{name}.v1.schema.json"
+            for name in ("binding-render", "binding-render-result", "binding-attached")
+        }
+        if schema not in models and not full_message:
             continue
         try:
-            models[entry["schemaPath"]].from_wire(artifact(entry["path"]))
+            value = artifact(entry["path"])
+            if full_message:
+                validate_action_runtime_message(DeckrMessage.from_wire(value))
+                if schema.endswith("/binding-attached.v1.schema.json"):
+                    attached = BindingAttachedBody.from_wire(value["body"]["event"])
+                    if attached.rendering is not None:
+                        validate_rendering_support(attached.binding, attached.rendering)
+            else:
+                models[schema].from_wire(value)
         except (ValueError, TypeError):
             valid = False
         else:

@@ -87,6 +87,8 @@ from deckr.actions.message_types import (
     BINDING_OUTPUT as BINDING_OUTPUT,
     BINDING_OVERLAY as BINDING_OVERLAY,
     BINDING_OVERLAY_CLEAR as BINDING_OVERLAY_CLEAR,
+    BINDING_RENDER as BINDING_RENDER,
+    BINDING_RENDER_RESULT as BINDING_RENDER_RESULT,
     CAPABILITY_INPUT as CAPABILITY_INPUT,
     CLOSE_PAGE as CLOSE_PAGE,
     COMMAND_MESSAGE_TYPES as COMMAND_MESSAGE_TYPES,
@@ -107,6 +109,17 @@ from deckr.actions.pages import (
     PageSessionCommandTarget as PageSessionCommandTarget,
     ReplacePageBody as ReplacePageBody,
     make_dynamic_page_id as make_dynamic_page_id,
+)
+from deckr.actions.rendering import (
+    BindingRenderBody as BindingRenderBody,
+    BindingRenderResultBody as BindingRenderResultBody,
+    RenderContent as RenderContent,
+    RenderFormat as RenderFormat,
+    RenderImage as RenderImage,
+    RenderingSupport as RenderingSupport,
+    RenderLimits as RenderLimits,
+    RenderTargetSupport as RenderTargetSupport,
+    RenderText as RenderText,
 )
 from deckr.actions.schema import (
     _ACTION_NO_CONTRACT_MESSAGE_TYPES as _ACTION_NO_CONTRACT_MESSAGE_TYPES,

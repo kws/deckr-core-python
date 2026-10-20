@@ -53,6 +53,7 @@ class HardwareOperations:
         capability_id: str,
         command_type: str,
         *,
+        message_id: str | None = None,
         control_id: str | None = None,
         params: Mapping[str, object] | None = None,
     ) -> DeckrMessage:
@@ -69,7 +70,8 @@ class HardwareOperations:
         )
         self.require_authority()
         message = await self._endpoint.send(
-            **self._message_args(ref, hw.CONTROL_COMMAND, body)
+            **({"message_id": message_id} if message_id is not None else {}),
+            **self._message_args(ref, hw.CONTROL_COMMAND, body),
         )
         self.require_authority()
         return message

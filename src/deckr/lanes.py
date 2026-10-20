@@ -107,6 +107,7 @@ class EndpointSession:
     async def send(
         self,
         *,
+        message_id: str | None = None,
         lane: str,
         recipient: str | EndpointAddress | MessageTarget,
         subject: EntitySubject,
@@ -131,6 +132,10 @@ class EndpointSession:
             trace=trace,
             contract=contract,
         )
+        if message_id is not None:
+            message = DeckrMessage.from_wire(
+                message.to_dict() | {"messageId": message_id}
+            )
         validate_message_for_contract(message, self._contract_for(lane))
         await self._message_bus.publish(message)
         return message
