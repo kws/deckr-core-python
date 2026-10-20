@@ -760,7 +760,9 @@ async def test_remove_device_cancels_live_claim_contract_without_lane_event(
         record = await concord._contract_record(contract)
         assert record is not None
         if not released_registry:
-            assert record.cancel_reason == "hardware device stream-deck-mini disconnected"
+            assert (
+                record.cancel_reason == "hardware device stream-deck-mini disconnected"
+            )
         assert (await concord._validate(contract)).status == (
             ContractValidityStatus.CANCELLED
         )
