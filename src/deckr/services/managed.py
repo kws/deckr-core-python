@@ -66,6 +66,7 @@ class ManagedService:
             ),
             descriptor=lease.descriptor if lease is not None else None,
             local_authority=lease is not None,
+            contract=_lease_pointer(lease) if lease is not None else None,
         )
 
     @property
@@ -512,5 +513,6 @@ class ManagedService:
             failure=failure,
             cleanup_failures=self._state.cleanup_failures,
             last_cleanup_failure=self._state.last_cleanup_failure,
+            contract=_lease_pointer(self._lease) if self._lease is not None else None,
         )
         self._state_bus.publish_locked(("service",), current=local_authority)

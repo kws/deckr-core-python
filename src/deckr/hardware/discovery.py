@@ -1,9 +1,10 @@
 """A shared, typed hardware directory over the runtime's Beacon view."""
 
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import AbstractAsyncContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from types import MappingProxyType
 
 import anyio
 
@@ -31,6 +32,10 @@ class HardwareCandidate:
     capacity: ProfileCapacity
     advertisement_key: str
     revision: int
+    labels: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "labels", MappingProxyType(dict(self.labels)))
 
     @property
     def identity(self) -> tuple[str, str, str]:
@@ -52,6 +57,7 @@ def hardware_candidates(candidate: Candidate) -> tuple[HardwareCandidate, ...]:
             device.capacity,
             candidate.key,
             candidate.revision,
+            payload.labels,
         )
         for _key, device in sorted(payload.devices.items())
     )

@@ -230,6 +230,8 @@ def _validate_contract_names(
     *,
     field_name: str,
 ) -> tuple[str, ...]:
+    if len(set(values)) != len(values):
+        raise ValueError(f"{field_name} names must be unique")
     return tuple(
         _require_contract_name(value, field_name=field_name) for value in values
     )

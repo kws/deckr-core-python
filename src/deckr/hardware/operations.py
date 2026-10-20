@@ -23,7 +23,11 @@ from deckr.hardware.validation import (
 @dataclass(frozen=True, slots=True)
 class HardwareEvent:
     message: DeckrMessage
-    body: hw.ControlInputMessage | hw.CapabilityStateChangedMessage
+    body: (
+        hw.ControlInputMessage
+        | hw.CapabilityStateChangedMessage
+        | hw.CommandRejectedMessage
+    )
 
 
 class HardwareOperations:

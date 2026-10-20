@@ -101,6 +101,15 @@ class CapabilityRequirement(DeckrModel):
     command_types: tuple[str, ...] = Field(default_factory=tuple, alias="commandTypes")
     views: tuple[CapabilityViewKind, ...] = Field(default_factory=tuple)
 
+    @field_validator("views")
+    @classmethod
+    def _validate_views(
+        cls, value: tuple[CapabilityViewKind, ...]
+    ) -> tuple[CapabilityViewKind, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("capability views must be unique")
+        return value
+
     @field_validator("name")
     @classmethod
     def _validate_name(cls, value: str) -> str:
@@ -129,7 +138,7 @@ class CapabilityRequirement(DeckrModel):
 class MatchedCapability(DeckrModel):
     """A capability selected by the controller for a binding requirement."""
 
-    requirement_name: str | None = Field(default=None, alias="requirementName")
+    requirement_name: str = Field(alias="requirementName")
     capability: CapabilityRef
     family: str
     capability_type: str = Field(alias="type")
@@ -141,8 +150,8 @@ class MatchedCapability(DeckrModel):
 
     @field_validator("requirement_name")
     @classmethod
-    def _validate_optional_text(cls, value: str | None) -> str | None:
-        return _require_optional_text(value, field_name="matched capability metadata")
+    def _validate_optional_text(cls, value: str) -> str:
+        return _require_text(value, field_name="matched capability metadata")
 
     @field_validator("capability")
     @classmethod
@@ -257,6 +266,7 @@ class PageSessionMetadata(DeckrModel):
     config_id: str = Field(alias="configId")
     page_id: str = Field(alias="pageId")
     page_session_id: str = Field(alias="pageSessionId")
+    generation: int = Field(ge=0, strict=True)
     context_id: str = Field(alias="contextId")
     owner_binding_id: str | None = Field(default=None, alias="ownerBindingId")
     bindings: tuple[BindingMetadata, ...] = Field(default_factory=tuple)

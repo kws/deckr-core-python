@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping
-from typing import Any
+from typing import Annotated, Any, Literal
 
 from pydantic import Field, field_serializer, field_validator, model_validator
 
@@ -169,12 +169,39 @@ class DynamicPageCommand(DeckrModel):
         return self.model_dump(by_alias=True, exclude_none=True, mode="json")
 
 
+class BindingCommandTarget(DeckrModel):
+    """A current binding in the recipient controller session."""
+
+    kind: Literal["binding"]
+    binding_id: str = Field(alias="bindingId", min_length=1)
+    generation: int = Field(ge=0, strict=True)
+
+
+class PageSessionCommandTarget(DeckrModel):
+    """A current page session in the recipient controller session."""
+
+    kind: Literal["page_session"]
+    page_session_id: str = Field(alias="pageSessionId", min_length=1)
+    generation: int = Field(ge=0, strict=True)
+
+
+PageCommandTarget = Annotated[
+    BindingCommandTarget | PageSessionCommandTarget, Field(discriminator="kind")
+]
+
+
 class OpenPageBody(ActionMessageBody):
+    target: PageCommandTarget
     descriptor: DynamicPageCommand
 
 
 class ReplacePageBody(ActionMessageBody):
+    target: PageSessionCommandTarget
     descriptor: DynamicPageCommand
+
+
+class ClosePageBody(ActionMessageBody):
+    target: PageSessionCommandTarget
 
 
 def make_dynamic_page_id() -> str:

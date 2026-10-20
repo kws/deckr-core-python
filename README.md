@@ -49,12 +49,39 @@ from the reference repository at the revision recorded in
 
 ## Specification dependency
 
+The core now targets the reviewed `1.0.0-alpha.2` Action Runtime contract.
+Page commands require explicit `BindingCommandTarget` or
+`PageSessionCommandTarget` values from `deckr.actions.messages`; `close_page`
+uses `ClosePageBody`, and page-session metadata requires `generation`.
+Earlier targetless commands are rejected.
+
+`deckr.actions.matching.match_capability_requirements` selects capabilities
+within a supplied negotiated device, control, and optional configured scope.
+`validate_binding_resources` checks application-selected results, including
+preference order, complete supported name sets, provenance, and exact sources.
+Equivalent candidates remain application policy. No requirements means no
+matches. Every match must name its requirement.
+
+`deckr.action_runtime.validate_action_runtime_message` checks service subjects
+and typed payloads. `validate_page_command` checks `PageCommandContext`
+observations against a command and returns its retained target. The application
+must supply current agreement, session, claim, and target observations and call
+the helper again while committing a serialized transition. The helper does not
+allocate pages or acquire authority.
+
+Hardware discovery candidates expose immutable manager `labels` snapshots.
+Managed claim events include `CommandRejectedMessage` with the original envelope
+and correlation; a rejection alone leaves claim authority intact.
+`ManagedService.state.contract` exposes the observed agreement identity.
+Use managed operations to check current authority when acting on that observation.
+
 CI checks out the immutable `kws/deckr` commit in `.deckr-spec-revision` and runs
 `scripts/check_spec_conformance.py` against its artifacts. The script compares
 Python key encoding, Beacon/Concord keys, terms hashing, NATS message mapping,
-settings target keys, and protocol record validation with upstream vectors and
-positive/negative fixtures. These checks cover those implemented cases; they do
-not establish complete protocol or distributed lifecycle conformance.
+settings target keys, protocol records, and Action Runtime matching/page semantics
+with upstream vectors and positive/negative fixtures. These checks cover those
+implemented cases; they do not establish complete protocol or distributed
+lifecycle conformance.
 
 To reproduce CI without changing an existing sibling specification checkout:
 

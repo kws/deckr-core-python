@@ -859,12 +859,15 @@ async def test_use_matching_reconnects_with_fresh_contract_after_winner_loss() -
         async with services.use_matching(protocol, timeout_seconds=1) as service:
             assert service.state.phase.value == "ready"
             first = proposals[0]
+            observed_contract = service.state.contract
+            assert observed_contract.contract_id == first.contract.contract_id
             first.agreement.lose()
             reconnecting = await service.wait_for_state(
                 lambda state: state.phase.value == "reconnecting",
                 timeout_seconds=1,
             )
             assert not reconnecting.local_authority
+            assert reconnecting.contract is None
             with anyio.fail_after(1):
                 while len(proposals) < 2:
                     await anyio.sleep(0)
@@ -875,6 +878,8 @@ async def test_use_matching_reconnects_with_fresh_contract_after_winner_loss() -
                 timeout_seconds=1,
             )
             assert ready.local_authority
+            assert ready.contract.contract_id == proposals[1].contract.contract_id
+            assert ready.contract != observed_contract
             assert (
                 proposals[0].contract.contract_id != proposals[1].contract.contract_id
             )

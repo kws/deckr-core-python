@@ -150,10 +150,95 @@ def check_protocol_fixtures() -> int:
 def main() -> None:
     vector_count = check_vectors()
     fixture_count = check_protocol_fixtures()
+    action_count = check_action_runtime_semantics()
+    action_fixtures = check_action_runtime_fixtures()
     print(
         f"Passed {vector_count} vector cases and {fixture_count} protocol fixtures "
+        f"and {action_count} Action Runtime semantic cases "
+        f"and {action_fixtures} Action Runtime fixtures "
         f"from {CONTRACT_ROOT}"
     )
+
+
+def check_action_runtime_semantics() -> int:
+    from deckr.action_runtime import (
+        PageCommandContext,
+        validate_action_runtime_message,
+        validate_page_command,
+    )
+    from deckr.actions.bindings import BindingMetadata
+    from deckr.actions.catalog import ActionDescriptor
+    from deckr.actions.matching import validate_binding_resources
+    from deckr.hardware.descriptors import DeviceDescriptor, DeviceRef
+
+    vectors = artifact("vectors/action-runtime-semantics.v1.json")
+    for case in vectors["cases"]:
+        context = vectors["contexts"][case["contextRef"]]
+        try:
+            if case["rule"] == "SEM-ACT-002":
+                validate_binding_resources(
+                    BindingMetadata.from_wire(case["instance"]),
+                    ActionDescriptor.from_wire(context["actionDescriptor"]),
+                    DeviceDescriptor.from_wire(context["deviceDescriptor"]),
+                    DeviceRef.from_wire(context["deviceRef"]),
+                    context["controlId"],
+                    configured_capability_ids=context["configuredCapabilityIds"],
+                )
+            elif case["rule"] == "SEM-ACT-003":
+                validate_page_command(
+                    DeckrMessage.from_wire(case["instance"]),
+                    PageCommandContext.model_validate(context),
+                )
+            elif case["rule"] == "SEM-ACT-005":
+                validate_action_runtime_message(
+                    DeckrMessage.from_wire(case["instance"])
+                )
+            else:
+                raise AssertionError(
+                    f"Unknown Action Runtime semantic rule: {case['rule']}"
+                )
+        except (ValueError, TypeError):
+            valid = False
+        else:
+            valid = True
+        equal(valid, case["semanticValid"], case["id"])
+    return len(vectors["cases"])
+
+
+def check_action_runtime_fixtures() -> int:
+    from deckr.actions import messages
+
+    names = (
+        "binding-command-target",
+        "page-session-command-target",
+        "open-page-body",
+        "replace-page-body",
+        "close-page-body",
+        "page-session-metadata",
+        "capability-requirement",
+        "capability-requirement-selector",
+        "matched-capability",
+        "action-descriptor",
+    )
+    models = {
+        f"schemas/deckr/action-runtime/{name}.v1.schema.json": getattr(
+            messages, "".join(part.title() for part in name.split("-"))
+        )
+        for name in names
+    }
+    count = 0
+    for entry in artifact("manifest.json")["artifacts"]:
+        if entry["kind"] != "fixture" or entry.get("schemaPath") not in models:
+            continue
+        try:
+            models[entry["schemaPath"]].from_wire(artifact(entry["path"]))
+        except (ValueError, TypeError):
+            valid = False
+        else:
+            valid = True
+        equal(valid, entry["valid"], entry["path"])
+        count += 1
+    return count
 
 
 if __name__ == "__main__":

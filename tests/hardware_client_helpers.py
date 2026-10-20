@@ -84,7 +84,9 @@ def wired_deckr():
 
 
 @asynccontextmanager
-async def hardware_setup(*, count=1, event_buffer_size=64, reset_handler=None):
+async def hardware_setup(
+    *, count=1, event_buffer_size=64, reset_handler=None, labels=None
+):
     async with (
         wired_deckr() as runtime,
         runtime.endpoint("hardware_manager:manager-a") as manager_endpoint,
@@ -99,6 +101,7 @@ async def hardware_setup(*, count=1, event_buffer_size=64, reset_handler=None):
                 manager_id="manager-a",
                 devices=devices,
                 reset_handler=reset_handler,
+                labels=labels,
             ) as manager,
             runtime.hardware(endpoint) as client,
         ):

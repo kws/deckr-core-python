@@ -17,6 +17,20 @@ from deckr.hardware import (
 pytestmark = pytest.mark.asyncio
 
 
+async def test_candidate_labels_are_immutable_snapshots():
+    async with hardware_setup(labels={"room": "studio"}) as h:
+        candidate = await h.client.wait_for_device(
+            lambda _candidate: True, timeout_seconds=2
+        )
+        assert candidate.labels == {"room": "studio"}
+        labels = {"room": "studio"}
+        snapshot = replace(candidate, labels=labels)
+        labels["room"] = "office"
+        assert snapshot.labels == {"room": "studio"}
+        with pytest.raises(TypeError):
+            snapshot.labels["room"] = "office"
+
+
 async def test_stale_discovery_preserves_existing_claim_and_recovers(monkeypatch):
     async with hardware_setup() as h, h.client.claim(h.spec) as claim:
         bucket = h.runtime._message_bus.kv_buckets[

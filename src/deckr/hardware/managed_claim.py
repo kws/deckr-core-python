@@ -213,7 +213,10 @@ class ManagedHardwareClaim(HardwareOperations):
         except (HardwareUnavailable, TypeError, ValueError):
             return
         if not isinstance(
-            body, hw.ControlInputMessage | hw.CapabilityStateChangedMessage
+            body,
+            hw.ControlInputMessage
+            | hw.CapabilityStateChangedMessage
+            | hw.CommandRejectedMessage,
         ):
             return
         try:

@@ -97,10 +97,14 @@ from deckr.actions.message_types import (
     REPLACE_PAGE as REPLACE_PAGE,
 )
 from deckr.actions.pages import (
+    BindingCommandTarget as BindingCommandTarget,
+    ClosePageBody as ClosePageBody,
     DynamicPageCommand as DynamicPageCommand,
     OpenPageBody as OpenPageBody,
     PageChildBindingDescriptor as PageChildBindingDescriptor,
     PageChildBindingTarget as PageChildBindingTarget,
+    PageCommandTarget as PageCommandTarget,
+    PageSessionCommandTarget as PageSessionCommandTarget,
     ReplacePageBody as ReplacePageBody,
     make_dynamic_page_id as make_dynamic_page_id,
 )

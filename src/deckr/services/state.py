@@ -8,6 +8,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Any
 
+from deckr.contracts.authority import ContractPointer
 from deckr.services.runtime import ServiceDescriptor
 
 
@@ -43,6 +44,8 @@ class ManagedServiceState:
     failure: ManagedServiceFailure | None = None
     cleanup_failures: int = 0
     last_cleanup_failure: ManagedServiceFailure | None = None
+    # Observation only; managed operations still check the current lease.
+    contract: ContractPointer | None = None
 
 
 ManagedServiceStatePredicate = Callable[[ManagedServiceState], bool]

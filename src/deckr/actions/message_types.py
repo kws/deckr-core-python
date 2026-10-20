@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from deckr.actions._body import ActionExtensionBody, ActionMessageBody, EmptyActionBody
+from deckr.actions._body import ActionExtensionBody, ActionMessageBody
 from deckr.actions.lifecycle import (
     ActionInstanceLifecycleBody,
     ActionLifecycleRejectedBody,
@@ -14,7 +14,7 @@ from deckr.actions.lifecycle import (
     CapabilityInputBody,
     PageSessionLifecycleBody,
 )
-from deckr.actions.pages import OpenPageBody, ReplacePageBody
+from deckr.actions.pages import ClosePageBody, OpenPageBody, ReplacePageBody
 
 ACTION_INSTANCE_CREATED = "actionInstanceCreated"
 
@@ -99,6 +99,6 @@ ACTION_BODY_BY_MESSAGE_TYPE: dict[str, type[ActionMessageBody]] = {
     BINDING_OVERLAY_CLEAR: BindingOverlayClearBody,
     OPEN_PAGE: OpenPageBody,
     REPLACE_PAGE: ReplacePageBody,
-    CLOSE_PAGE: EmptyActionBody,
+    CLOSE_PAGE: ClosePageBody,
     ACTION_EXTENSION: ActionExtensionBody,
 }

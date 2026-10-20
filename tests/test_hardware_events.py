@@ -29,6 +29,46 @@ async def test_ordered_inputs_are_never_coalesced():
         ]
 
 
+async def test_command_rejection_retains_correlation_and_claim_authority():
+    from deckr.hardware import messages as hw
+
+    async with (
+        hardware_setup() as h,
+        h.client.claim(h.spec) as claim,
+        claim.events() as events,
+    ):
+        command = await claim.command(
+            "device-0", "raster.bitmap", "clear", control_id="key.0.0"
+        )
+        rejection = hw.hardware_message(
+            sender=h.manager_endpoint.address,
+            sender_session_id=h.manager_endpoint.session_id,
+            recipient=h.endpoint.address,
+            recipient_session_id=h.endpoint.session_id,
+            message_type=hw.COMMAND_REJECTED,
+            subject=command.subject,
+            contract=command.contract,
+            body=hw.CommandRejectedMessage(
+                deviceRef=hw.hardware_body_from_message(command).device_ref,
+                controlId="key.0.0",
+                capabilityId="raster.bitmap",
+                commandType="clear",
+                reason="rejected",
+            ),
+        ).model_copy(update={"in_reply_to": command.message_id})
+        await h.runtime._message_bus.publish(
+            rejection.model_copy(update={"sender_session_id": "old-session"})
+        )
+        await h.runtime._message_bus.publish(rejection)
+        await h.runtime._message_bus.publish(input_message(h, claim, sequence=9))
+        with anyio.fail_after(2):
+            event = await anext(events)
+            assert isinstance(event.body, hw.CommandRejectedMessage)
+            assert event.message.in_reply_to == command.message_id
+            assert (await anext(events)).body.sequence == 9
+        assert claim.state.local_authority
+
+
 async def test_invalid_inputs_are_discarded_without_hiding_next_valid_event():
     async with (
         hardware_setup() as h,

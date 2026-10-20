@@ -143,8 +143,9 @@ def test_managed_service_state_is_immutable_versioned_and_opaque() -> None:
         "failure",
         "cleanup_failures",
         "last_cleanup_failure",
+        "contract",
     )
-    assert not hasattr(state, "contract")
+    assert state.contract is None
     assert not hasattr(state, "token")
     with pytest.raises(FrozenInstanceError):
         state.version = 2  # type: ignore[misc]

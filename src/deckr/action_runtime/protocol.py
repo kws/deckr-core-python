@@ -33,7 +33,7 @@ from deckr.actions.messages import (
     BindingOverlayBody,
     BindingOverlayClearBody,
     CapabilityInputBody,
-    EmptyActionBody,
+    ClosePageBody,
     OpenPageBody,
     PageSessionLifecycleBody,
     ReplacePageBody,
@@ -156,7 +156,7 @@ _BODY_BY_RUNTIME_MESSAGE: Mapping[str, type[ActionMessageBody]] = {
     BINDING_OVERLAY_CLEAR_MESSAGE: BindingOverlayClearBody,
     OPEN_PAGE_MESSAGE: OpenPageBody,
     REPLACE_PAGE_MESSAGE: ReplacePageBody,
-    CLOSE_PAGE_MESSAGE: EmptyActionBody,
+    CLOSE_PAGE_MESSAGE: ClosePageBody,
 }
 
 
