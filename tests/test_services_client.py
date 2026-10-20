@@ -340,6 +340,7 @@ def _agreement(
     agreement = SimpleNamespace(
         contract=contract,
         state=state,
+        cleanup_failure=None,
         cancel=AsyncMock(return_value=True),
         aclose=AsyncMock(),
     )
@@ -381,6 +382,7 @@ def _lease(
 
 class _RaceAgreement:
     def __init__(self, descriptor: ServiceDescriptor, contract_id: str) -> None:
+        self.cleanup_failure = None
         participants = tuple(sorted((_CLIENT_ADDRESS, descriptor.endpoint), key=str))
         self.contract = ContractHandle(
             key=f"contracts.{contract_id}.1",

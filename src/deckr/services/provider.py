@@ -9,11 +9,13 @@ import anyio
 from deckr.beacon import Beacon, BeaconAdvertisementLease, BeaconAdvertisementSpec
 from deckr.concord import (
     Concord,
+    ConcordConflict,
     ConcordParticipant,
     ConcordParticipantCandidate,
     ConcordParticipantPolicy,
     ConcordParticipantSelection,
     ConcordParticipantState,
+    ConcordUnavailable,
     ContractHandle,
     ContractPointer,
 )
@@ -133,7 +135,19 @@ class ServiceProvider:
         raise anyio.ClosedResourceError
 
     async def _enter(self) -> ServiceProvider:
-        await self._concord.bootstrap_owner(self.endpoint)  # noqa: SLF001
+        delay = 0.1
+        while True:
+            self.endpoint._ensure_active()  # noqa: SLF001
+            try:
+                with anyio.fail_after(5):
+                    await self._concord.bootstrap_owner(self.endpoint)
+                break
+            except (ConcordConflict, ConcordUnavailable, TimeoutError):
+                # Keep ownership checks inside the managed boundary. The enter
+                # cancel scope stops both attempts and waits on provider close.
+                await anyio.sleep(delay)
+                delay = min(delay * 2, 5)
+        self.endpoint._ensure_active()  # noqa: SLF001
         if self._closed:
             raise anyio.ClosedResourceError
         await self._participant.__aenter__()

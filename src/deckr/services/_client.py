@@ -159,8 +159,12 @@ class DeckrServices:
             await service._mark_closed()
             if runner_scope is not None:
                 runner_scope.cancel()
-            with anyio.move_on_after(5, shield=True):
+            with anyio.move_on_after(5, shield=True) as cleanup:
                 await done.wait()
+            if cleanup.cancelled_caught:
+                await service._record_cleanup_failure(
+                    TimeoutError("Service cleanup timed out")
+                )
 
         service._close_callback = close  # noqa: SLF001
         self._task_group.start_soon(run)
@@ -218,6 +222,7 @@ class DeckrServices:
             await self._close_active_service_use_lease(
                 lease,
                 reason="service_use_closed",
+                service=service,
             )
 
         service._close_callback = close  # noqa: SLF001
@@ -249,6 +254,7 @@ class DeckrServices:
                     await self._close_active_service_use_lease(
                         winner,
                         reason="service_use_closed",
+                        service=service,
                     )
                     winner = None
                     return
@@ -259,6 +265,7 @@ class DeckrServices:
                 await self._close_active_service_use_lease(
                     winner,
                     reason="service_use_reconnecting",
+                    service=service,
                 )
                 winner = None
         finally:
@@ -267,6 +274,7 @@ class DeckrServices:
                     await self._close_active_service_use_lease(
                         winner,
                         reason="service_use_closed",
+                        service=service,
                     )
 
     async def _race_service_candidates(
@@ -527,6 +535,7 @@ class DeckrServices:
         lease: ServiceUseLease,
         *,
         reason: str,
+        service: ManagedService | None = None,
     ) -> None:
         if self._active_service_use_leases.pop(id(lease), None) is None:
             return
@@ -535,7 +544,18 @@ class DeckrServices:
         except (ConcordConflict, ConcordUnavailable):
             pass
         finally:
-            await lease.agreement.aclose()
+            with anyio.CancelScope(shield=True):
+                await lease.agreement.aclose()
+                if lease.agreement.cleanup_failure is not None:
+                    if service is not None:
+                        await service._record_cleanup_failure(
+                            lease.agreement.cleanup_failure
+                        )
+                    else:
+                        raise ServiceUnavailable(
+                            "service_cleanup_failed",
+                            str(lease.agreement.cleanup_failure),
+                        )
 
     async def _propose_service_use(
         self, descriptor: ServiceDescriptor, *, timeout_seconds: float | None

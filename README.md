@@ -232,6 +232,12 @@ The returned `ManagedService` provides guarded messages, requests, protected
 views, and observable lifecycle state. `Deckr.service_provider(...)` creates the
 provider boundary for an application-owned `ServiceProtocol`. Backend behavior
 and domain consent remain with the application.
+Provider entry waits and retries bounded bootstrap attempts while earlier
+ownership is unresolved. It does not advertise during that wait, and `aclose()`
+cancels entry. Managed client state retains `cleanup_failures` and
+`last_cleanup_failure` after recovery. Client shutdown reports failures from
+current or pending cleanup; an earlier completed recovery failure does not fail
+a later successful shutdown.
 
 `deckr.actions` contains action, binding, page, settings, and payload models.
 `deckr.action_runtime` supplies the Action Runtime service declaration, availability

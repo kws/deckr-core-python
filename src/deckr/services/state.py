@@ -41,6 +41,8 @@ class ManagedServiceState:
     descriptor: ServiceDescriptor | None
     local_authority: bool
     failure: ManagedServiceFailure | None = None
+    cleanup_failures: int = 0
+    last_cleanup_failure: ManagedServiceFailure | None = None
 
 
 ManagedServiceStatePredicate = Callable[[ManagedServiceState], bool]

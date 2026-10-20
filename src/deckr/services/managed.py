@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import anyio
@@ -54,6 +55,7 @@ class ManagedService:
         self._close_lock = anyio.Lock()
         self._close_done = anyio.Event()
         self._close_started = False
+        self._shutdown_failure: ServiceUnavailable | None = None
         self._state_bus = CoalescedStateBroadcaster[str](current=lease is not None)
         self._state = ManagedServiceState(
             version=0,
@@ -140,6 +142,8 @@ class ManagedService:
                     self._close_started = True
             if not first:
                 await self._close_done.wait()
+                if self._shutdown_failure is not None:
+                    raise self._shutdown_failure
                 return
             try:
                 callback = self._close_callback
@@ -147,8 +151,30 @@ class ManagedService:
                     await self._mark_closed()
                 else:
                     await callback()
+                if self._shutdown_failure is not None:
+                    raise self._shutdown_failure
             finally:
                 self._close_done.set()
+
+    async def _record_cleanup_failure(self, error: Exception) -> None:
+        failure = ServiceUnavailable("service_cleanup_failed", str(error))
+        async with self._state_bus.lock:
+            self._state = replace(
+                self._state,
+                cleanup_failures=self._state.cleanup_failures + 1,
+                last_cleanup_failure=_managed_failure(failure),
+            )
+            if self._closed:
+                self._state = replace(self._state, version=self._state.version + 1)
+            else:
+                self._publish_locked(
+                    self._state.phase,
+                    descriptor=self._state.descriptor,
+                    local_authority=self._state.local_authority,
+                    failure=self._state.failure,
+                )
+            if self._close_started:
+                self._shutdown_failure = failure
 
     async def send(
         self,
@@ -484,5 +510,7 @@ class ManagedService:
             descriptor=descriptor,
             local_authority=local_authority,
             failure=failure,
+            cleanup_failures=self._state.cleanup_failures,
+            last_cleanup_failure=self._state.last_cleanup_failure,
         )
         self._state_bus.publish_locked(("service",), current=local_authority)

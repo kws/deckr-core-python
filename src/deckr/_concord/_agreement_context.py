@@ -83,6 +83,7 @@ class ConcordAgreementLease:
         self._cleanup_running = False
         self._cleanup_wakeup = anyio.Event()
         self._close_started = False
+        self.cleanup_failure: Exception | None = None
         self._close_lock = anyio.Lock()
         self._close_done = anyio.Event()
         self._enter_cancel_scope: anyio.CancelScope | None = None
@@ -339,7 +340,7 @@ class ConcordAgreementLease:
                     validity=self._state.validity,
                     local_authority=False,
                 )
-                with anyio.move_on_after(CONCORD_LIFECYCLE_CLEANUP_SECONDS):
+                with anyio.move_on_after(CONCORD_LIFECYCLE_CLEANUP_SECONDS) as cleanup:
                     if wait_for_enter:
                         await self._enter_done.wait()
                     self._task_group = None
@@ -348,6 +349,12 @@ class ConcordAgreementLease:
                         cleanup_group.start_soon(self._cleanup_contract_on_close)
                         if lease is not None:
                             cleanup_group.start_soon(lease.aclose)
+                if cleanup.cancelled_caught:
+                    self.cleanup_failure = TimeoutError(
+                        "Concord agreement cleanup timed out"
+                    )
+                elif lease is not None and lease.cleanup_failure is not None:
+                    self.cleanup_failure = lease.cleanup_failure
                 await self._publish(
                     ConcordLifecyclePhase.CLOSED,
                     validity=self._state.validity,
@@ -384,7 +391,8 @@ class ConcordAgreementLease:
                     self._endpoint.address,
                     reason="concord_unresolved_contract_create_closed",
                 )
-        except (ConcordConflict, ConcordUnavailable):
+        except (ConcordConflict, ConcordUnavailable) as exc:
+            self.cleanup_failure = exc
             logger.debug(
                 "Could not resolve Concord agreement during close",
                 exc_info=True,
