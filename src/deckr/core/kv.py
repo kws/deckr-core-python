@@ -51,6 +51,8 @@ class KvEntry:
     key: str
     value: Mapping[str, Any]
     revision: int
+    parse_error: str | None = None
+    raw: bytes | None = None
 
 
 @dataclass(frozen=True, slots=True)

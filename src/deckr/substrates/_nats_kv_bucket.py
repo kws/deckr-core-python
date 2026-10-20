@@ -20,12 +20,12 @@ from deckr.core.kv import (
 )
 from deckr.core.wire import WireModel
 from deckr.substrates._nats_kv_policy import (
+    _create_nats_stream_raw_config,
     _duration_nanoseconds,
     _duration_seconds_equal,
     _nats_stream_raw_config,
     _raw_duration_nanoseconds,
     _resolved_stream_ttl_seconds,
-    _update_nats_stream_raw_config,
 )
 from deckr.substrates._nats_kv_records import (
     NATS_SUBJECT_DELETE_MARKER_TTL_FIELD,
@@ -34,7 +34,7 @@ from deckr.substrates._nats_kv_records import (
     kv_absent_marker_revision,
     kv_entry_from_raw,
     kv_entry_is_absent_marker,
-    kv_keys,
+    kv_snapshot_entries,
     logger,
 )
 
@@ -79,17 +79,11 @@ class NatsJsonKvBucket:
     async def items(self, prefix: str = "") -> tuple[KvEntry, ...]:
         kv = await self._available_kv()
         try:
-            keys = await kv_keys(kv, prefix)
+            return await kv_snapshot_entries(kv, self.bucket, prefix)
         except Exception as exc:
             if is_key_missing(exc):
                 return ()
             raise KvUnavailable(f"Could not list KV prefix {prefix!r}") from exc
-        entries: list[KvEntry] = []
-        for key in sorted(str(item) for item in keys if str(item).startswith(prefix)):
-            entry = await self.get(key)
-            if entry is not None:
-                entries.append(entry)
-        return tuple(entries)
 
     async def put(
         self,
@@ -249,28 +243,16 @@ class NatsJsonKvBucket:
             return await self._ensure_kv_locked()
 
     async def _ensure_kv_locked(self):
-        newly_created = False
         try:
             kv = await self._js.key_value(self.bucket)
         except Exception:
             try:
                 kv = await self._create_kv()
-                newly_created = True
-            except TypeError:
-                try:
-                    kv = await self._create_kv_with_params()
-                    newly_created = True
-                except Exception:
-                    # Another process may have created the bucket between our
-                    # lookup and create attempt. The winner owns its policy;
-                    # treat the bucket as existing and validate it read-only.
-                    kv = await self._js.key_value(self.bucket)
             except Exception:
-                # Another process may have created the bucket between our
-                # lookup and create attempt. The winner owns its policy;
-                # treat the bucket as existing and validate it read-only.
+                # A concurrent creator may have won. Validate its final policy
+                # read-only; never repair a partially configured shared stream.
                 kv = await self._js.key_value(self.bucket)
-        await self._ensure_kv_stream_config(kv, newly_created=newly_created)
+        await self._ensure_kv_stream_config(kv)
         # Do not cache a handle until its policy has been validated. Otherwise
         # a failed first call would bypass validation on the next operation.
         self._kv = kv
@@ -287,61 +269,40 @@ class NatsJsonKvBucket:
             ) from exc
 
     async def _create_kv(self):
-        from nats.js.api import DiscardPolicy, KeyValueConfig, StreamConfig
+        from nats.js.api import DiscardPolicy, StreamConfig
 
-        if not self.policy.allow_write_ttl:
-            # nats.py 2.14 creates every KeyValueConfig stream with
-            # allow_msg_ttl=True. NATS does not allow that capability to be
-            # disabled after creation, so JSON KV buckets without per-write TTL
-            # must be created with their final policy atomically. This mirrors
-            # nats.py's KV stream shape except for the deliberate TTL flag.
-            await self._js.add_stream(
-                StreamConfig(
-                    name=f"KV_{self.bucket}",
-                    subjects=[f"$KV.{self.bucket}.>"],
-                    allow_direct=None,
-                    allow_rollup_hdrs=True,
-                    allow_msg_ttl=False,
-                    deny_delete=True,
-                    discard=DiscardPolicy.NEW,
-                    duplicate_window=min(120.0, self.policy.ttl_seconds or 120.0),
-                    max_age=self.policy.ttl_seconds,
-                    max_bytes=None,
-                    max_consumers=-1,
-                    max_msg_size=None,
-                    max_msgs=-1,
-                    max_msgs_per_subject=1,
-                    num_replicas=1,
-                    storage=None,
-                )
-            )
-            return await self._js.key_value(self.bucket)
-
-        return await self._js.create_key_value(
-            config=KeyValueConfig(
-                bucket=self.bucket,
-                history=1,
-                ttl=self.policy.ttl_seconds,
-            )
+        config = StreamConfig(
+            name=f"KV_{self.bucket}",
+            subjects=[f"$KV.{self.bucket}.>"],
+            allow_direct=None,
+            allow_rollup_hdrs=True,
+            allow_msg_ttl=self.policy.allow_write_ttl,
+            deny_delete=True,
+            discard=DiscardPolicy.NEW,
+            duplicate_window=min(120.0, self.policy.ttl_seconds or 120.0),
+            max_age=self.policy.ttl_seconds,
+            max_bytes=None,
+            max_consumers=-1,
+            max_msg_size=None,
+            max_msgs=-1,
+            max_msgs_per_subject=1,
+            num_replicas=1,
+            storage=None,
         )
-
-    async def _create_kv_with_params(self):
-        if not self.policy.allow_write_ttl:
-            # The exact StreamConfig path above does not depend on the
-            # KeyValueConfig call signature. Reaching this fallback means the
-            # stream creation itself raised TypeError, which is not safe to
-            # reinterpret as permission to create a non-canonical bucket.
-            raise KvUnavailable(
-                f"Could not create NATS KV bucket {self.bucket!r} "
-                "with its required policy"
+        if self.policy.ttl_seconds is None:
+            await self._js.add_stream(config)
+        else:
+            # nats.py's StreamConfig does not expose subject_delete_marker_ttl.
+            # Include it in the CREATE request: a later UPDATE creates a race
+            # with other processes binding and validating the same bucket.
+            raw = config.as_dict()
+            raw[NATS_SUBJECT_DELETE_MARKER_TTL_FIELD] = _duration_nanoseconds(
+                self.policy.ttl_seconds
             )
-        return await self._js.create_key_value(
-            bucket=self.bucket,
-            history=1,
-            ttl=self.policy.ttl_seconds,
-        )
+            await _create_nats_stream_raw_config(self._js, str(config.name), raw)
+        return await self._js.key_value(self.bucket)
 
-    async def _ensure_kv_stream_config(self, kv, *, newly_created: bool) -> None:
+    async def _ensure_kv_stream_config(self, kv) -> None:
         stream_name = getattr(kv, "_stream", f"KV_{self.bucket}")
         try:
             info = await self._js.stream_info(stream_name)
@@ -397,74 +358,37 @@ class NatsJsonKvBucket:
             )
             return
 
-        if not newly_created:
-            mismatches: list[str] = []
-            if not max_age_matches:
-                mismatches.append(
-                    "max_age "
-                    f"(expected {self.policy.ttl_seconds!r}s, "
-                    f"found {getattr(config, 'max_age', None)!r})"
-                )
-            if not max_messages_matches:
-                mismatches.append(
-                    "max_msgs_per_subject "
-                    f"(expected 1, "
-                    f"found {getattr(config, 'max_msgs_per_subject', None)!r})"
-                )
-            if not allow_write_ttl_matches:
-                mismatches.append(
-                    "allow_msg_ttl "
-                    f"(expected {self.policy.allow_write_ttl!r}, "
-                    f"found {observed_allow_write_ttl!r})"
-                )
-            if not marker_ttl_matches:
-                mismatches.append(
-                    f"{NATS_SUBJECT_DELETE_MARKER_TTL_FIELD} "
-                    f"(expected {expected_marker_ttl_ns!r}ns, "
-                    "found "
-                    f"{_raw_duration_nanoseconds(raw_config, NATS_SUBJECT_DELETE_MARKER_TTL_FIELD)!r})"
-                )
-            raise KvUnavailable(
-                f"Existing NATS KV bucket {self.bucket!r} has an incompatible "
-                f"configured KV policy: {', '.join(mismatches)}. The adapter will not "
-                "rewrite shared bucket policy; delete and recreate the "
-                f"development bucket/stream {stream_name} and restart."
+        mismatches: list[str] = []
+        if not max_age_matches:
+            mismatches.append(
+                "max_age "
+                f"(expected {self.policy.ttl_seconds!r}s, "
+                f"found {getattr(config, 'max_age', None)!r})"
             )
-
-        # The KV creation API expresses max_age and history. If the broker did
-        # not honor those fields, do not disguise the mismatch with a rewrite.
-        # A proven-new bucket may only receive the fields that API cannot set.
-        if not max_age_matches or not max_messages_matches:
-            raise KvUnavailable(
-                f"New NATS KV bucket {self.bucket!r} was created with an "
-                "incompatible max_age or max_msgs_per_subject policy."
+        if not max_messages_matches:
+            mismatches.append(
+                "max_msgs_per_subject "
+                f"(expected 1, "
+                f"found {getattr(config, 'max_msgs_per_subject', None)!r})"
             )
-        try:
-            if raw_config is None:
-                config.allow_msg_ttl = self.policy.allow_write_ttl
-                await self._js.update_stream(config)
-            else:
-                updated_config = dict(raw_config)
-                if expected_marker_ttl_ns is not None:
-                    updated_config[NATS_SUBJECT_DELETE_MARKER_TTL_FIELD] = (
-                        expected_marker_ttl_ns
-                    )
-                updated_config["allow_msg_ttl"] = self.policy.allow_write_ttl
-                await _update_nats_stream_raw_config(
-                    self._js,
-                    stream_name,
-                    updated_config,
-                )
-                raw_config = updated_config
-        except Exception as exc:
-            raise KvUnavailable(
-                f"New NATS KV bucket {self.bucket!r} could not be configured for "
-                "the configured KV policy. "
-                f"Delete the development bucket/stream {stream_name} and restart."
-            ) from exc
-        self._resolved_ttl_seconds = _resolved_stream_ttl_seconds(
-            config,
-            raw_config=raw_config,
+        if not allow_write_ttl_matches:
+            mismatches.append(
+                "allow_msg_ttl "
+                f"(expected {self.policy.allow_write_ttl!r}, "
+                f"found {observed_allow_write_ttl!r})"
+            )
+        if not marker_ttl_matches:
+            mismatches.append(
+                f"{NATS_SUBJECT_DELETE_MARKER_TTL_FIELD} "
+                f"(expected {expected_marker_ttl_ns!r}ns, "
+                "found "
+                f"{_raw_duration_nanoseconds(raw_config, NATS_SUBJECT_DELETE_MARKER_TTL_FIELD)!r})"
+            )
+        raise KvUnavailable(
+            f"Existing NATS KV bucket {self.bucket!r} has an incompatible "
+            f"configured KV policy: {', '.join(mismatches)}. The adapter will not "
+            "rewrite shared bucket policy; delete and recreate the "
+            f"development bucket/stream {stream_name} and restart."
         )
 
     def _validate_ttl(self, ttl: float | None) -> None:

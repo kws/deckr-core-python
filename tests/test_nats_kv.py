@@ -83,13 +83,12 @@ async def test_nats_json_kv_creates_bucket_with_policy_ttl() -> None:
 
     assert entry.bucket == "deckr_beacon_advertisement_v1"
     assert entry.value == {"owner": "hw"}
-    assert fake_js.created_config is not None
-    assert fake_js.created_config.bucket == "deckr_beacon_advertisement_v1"
-    assert fake_js.created_config.ttl == 300.0
-    assert fake_js.created_config.history == 1
-    assert fake_js.updated_raw_config is not None
-    assert fake_js.updated_raw_config["max_age"] == 300_000_000_000
-    assert fake_js.updated_raw_config["subject_delete_marker_ttl"] == 300_000_000_000
+    assert fake_js.created_raw_config["name"] == "KV_deckr_beacon_advertisement_v1"
+    assert fake_js.created_raw_config["max_age"] == 300_000_000_000
+    assert fake_js.created_raw_config["max_msgs_per_subject"] == 1
+    assert fake_js.created_raw_config["subject_delete_marker_ttl"] == 300_000_000_000
+    assert fake_js.created_raw_config["allow_msg_ttl"] is True
+    assert fake_js.updated_raw_config is None
 
 
 @pytest.mark.asyncio
@@ -188,7 +187,7 @@ async def test_nats_json_kv_treats_create_race_winner_as_existing() -> None:
             {"token": "one"},
         )
 
-    assert fake_js.create_key_value_calls == 1
+    assert fake_js.raw_create_calls == 1
     assert fake_js.key_value_calls == 2
     assert fake_js.updated_config is None
     assert fake_js.updated_raw_config is None
@@ -312,7 +311,9 @@ async def test_nats_json_kv_items_lists_current_entries_by_prefix() -> None:
 
 
 @pytest.mark.asyncio
-async def test_nats_json_kv_items_falls_back_to_unfiltered_keys_without_watch() -> None:
+async def test_nats_json_kv_items_rejects_clients_without_owned_snapshot_support() -> (
+    None
+):
     fake_js = _FakeJs()
     fake_js.kv.add_entry("contracts.main.1.meta", b'{"state":"open"}')
     fake_js.kv.add_entry("other.main.1.meta", b'{"state":"open"}')
@@ -322,11 +323,64 @@ async def test_nats_json_kv_items_falls_back_to_unfiltered_keys_without_watch() 
         policy=KvBucketPolicy(bucket="deckr_concord_contract_v1", ttl_seconds=None),
     )
 
-    entries = await bucket.items("contracts.")
-
-    assert [entry.key for entry in entries] == ["contracts.main.1.meta"]
+    with pytest.raises(KvUnavailable, match="Could not list"):
+        await bucket.items("contracts.")
     assert fake_js.kv.watch_patterns == []
-    assert fake_js.kv.key_filters == [None]
+    assert fake_js.kv.key_filters == []
+
+
+@pytest.mark.asyncio
+async def test_cancelled_snapshot_still_deletes_its_owned_consumer(monkeypatch) -> None:
+    from deckr.substrates._nats_kv_records import kv_snapshot_entries
+
+    fake_js = _FakeJs()
+    entered = anyio.Event()
+    stopped = anyio.Event()
+
+    async def blocked_next(self):
+        entered.set()
+        await anyio.sleep_forever()
+
+    async def stop(self):
+        await anyio.sleep(0)
+        stopped.set()
+
+    monkeypatch.setattr(_FakeKvWatcher, "__anext__", blocked_next)
+    monkeypatch.setattr(_FakeKvWatcher, "stop", stop)
+    async with anyio.create_task_group() as tasks:
+        tasks.start_soon(kv_snapshot_entries, fake_js.kv, fake_js.bucket, "")
+        await entered.wait()
+        tasks.cancel_scope.cancel()
+    assert stopped.is_set()
+    assert len(fake_js.deleted_consumers) == 1
+
+
+@pytest.mark.asyncio
+async def test_snapshot_does_not_report_success_when_consumer_deletion_fails(
+    monkeypatch,
+):
+    fake_js = _FakeJs()
+
+    async def failed_delete(*args):
+        raise RuntimeError("broker unavailable")
+
+    monkeypatch.setattr(fake_js, "delete_consumer", failed_delete)
+    bucket = NatsJsonKvBucket(js=fake_js, policy=KvBucketPolicy(fake_js.bucket, None))
+    with pytest.raises(KvUnavailable, match="Could not list") as failure:
+        await bucket.items()
+    assert "cleanup is pending" in str(failure.value.__cause__)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [b"{", b'{"x":1,"x":2}', b'{"x":NaN}', b'{"x":1e999}', b'{"x":"\\ud800"}', b"[]"],
+)
+def test_invalid_record_bytes_remain_observations(raw) -> None:
+    from deckr.substrates._nats_kv_records import kv_entry_from_bytes
+
+    entry = kv_entry_from_bytes("bucket", "key", 7, raw)
+    assert entry.revision == 7 and entry.raw == raw and entry.parse_error
+    assert entry.value == {}
 
 
 @pytest.mark.asyncio
@@ -963,6 +1017,8 @@ class _FakeJs:
             subject_delete_marker_ttl=subject_delete_marker_ttl,
         )
         self.created_config = None
+        self.created_raw_config = None
+        self.raw_create_calls = 0
         self.created_stream_config = None
         self.key_value_calls = 0
         self.create_key_value_calls = 0
@@ -1089,6 +1145,22 @@ class _FakeJs:
         timeout: float = 5,
     ) -> dict[str, object]:
         del timeout
+        if subject == f"$JS.API.STREAM.CREATE.KV_{self.bucket}":
+            self.raw_create_calls += 1
+            if self.create_race:
+                self.kv = _FakeKv(self)
+                raise RuntimeError("stream already exists")
+            raw_config = json.loads(req)
+            self.created_raw_config = raw_config
+            self.config = _FakeStreamConfig(
+                name=str(raw_config["name"]),
+                max_age=float(raw_config.get("max_age", 0)) / 1_000_000_000,
+                max_msgs_per_subject=int(raw_config["max_msgs_per_subject"]),
+                allow_msg_ttl=bool(raw_config.get("allow_msg_ttl", False)),
+                subject_delete_marker_ttl=raw_config.get("subject_delete_marker_ttl"),
+            )
+            self.kv = _FakeKv(self)
+            return {"config": self._raw_config(), "state": {}}
         if subject == f"$JS.API.STREAM.INFO.{self.config.name}":
             return {"config": self._raw_config(), "state": {}}
         if subject == f"$JS.API.STREAM.UPDATE.{self.config.name}":

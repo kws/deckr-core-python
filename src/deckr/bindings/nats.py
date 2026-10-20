@@ -60,9 +60,17 @@ class DeckrNatsSubstrate:
         self._buffer_size = buffer_size
         self._nc = None
         self._js = None
+        self._closed = False
+        self._connecting: anyio.CancelScope | None = None
         self._reply_subjects: dict[str, str] = {}
 
     async def connect(self) -> None:
+        if self._closed:
+            raise RuntimeError("NATS substrate is closed")
+        if self._connecting is not None:
+            raise RuntimeError("NATS substrate is already connecting")
+        if self._nc is not None:
+            return
         try:
             import nats
         except ModuleNotFoundError as exc:
@@ -94,14 +102,30 @@ class DeckrNatsSubstrate:
         }
         if self.auth_token is not None:
             connect_options["token"] = self.auth_token
-        self._nc = await nats.connect(self.url, **connect_options)
-        self._js = self._nc.jetstream()
+        client = None
+        try:
+            with anyio.CancelScope() as scope:
+                self._connecting = scope
+                client = await nats.connect(self.url, **connect_options)
+            if self._closed or scope.cancel_called:
+                if client is not None:
+                    with anyio.CancelScope(shield=True):
+                        await client.close()
+                raise RuntimeError("NATS substrate closed during connection")
+            self._nc = client
+            self._js = client.jetstream()
+        finally:
+            self._connecting = None
 
     async def aclose(self) -> None:
+        self._closed = True
+        if self._connecting is not None:
+            self._connecting.cancel()
         if self._nc is not None:
             await self._nc.close()
         self._nc = None
         self._js = None
+        self._reply_subjects.clear()
 
     def contract_for(self, lane: str) -> MessageContract:
         return self._lane_contracts.contract_for(lane)

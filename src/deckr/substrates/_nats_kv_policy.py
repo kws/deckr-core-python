@@ -85,3 +85,17 @@ async def _update_nats_stream_raw_config(
         json.dumps(config).encode("utf-8"),
         timeout=timeout,
     )
+
+
+async def _create_nats_stream_raw_config(
+    js: Any, stream_name: str, config: Mapping[str, Any]
+) -> None:
+    api_request = getattr(js, "_api_request", None)
+    if api_request is None:
+        raise RuntimeError("NATS JetStream context does not expose _api_request")
+    prefix = getattr(js, "_prefix", "$JS.API")
+    await api_request(
+        f"{prefix}.STREAM.CREATE.{stream_name}",
+        json.dumps(config).encode("utf-8"),
+        timeout=getattr(js, "_timeout", 5),
+    )

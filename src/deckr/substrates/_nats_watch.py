@@ -7,14 +7,14 @@ only after observing this watch's failure.
 
 from __future__ import annotations
 
-import json
 import uuid
 from time import monotonic
 from typing import Any
 
 import anyio
 
-from deckr.core.kv import KvChange, KvEntry, KvUnavailable, KvWatchBarrier, kv_value
+from deckr.core.kv import KvChange, KvUnavailable, KvWatchBarrier
+from deckr.substrates._nats_kv_records import kv_entry_from_bytes
 
 HEARTBEAT_INTERVAL_SECONDS = 0.5
 HEARTBEAT_DEADLINE_SECONDS = 1.5
@@ -132,11 +132,11 @@ class NatsKvWatch(anyio.abc.ObjectReceiveStream[KvChange | KvWatchBarrier]):
                     marker_reason=marker or operation or "absent",
                 )
             else:
-                entry = KvEntry(
+                entry = kv_entry_from_bytes(
                     self._bucket,
                     key,
-                    kv_value(json.loads(message.data)),
                     metadata.sequence.stream,
+                    message.data,
                 )
                 change = KvChange(self._bucket, key, entry.revision, "put", entry)
             self._enqueue(change)

@@ -44,7 +44,10 @@ async def _broker(tmp_path):
 async def test_real_kv_watch_replay_idle_heartbeats_and_consumer_loss(tmp_path):
     async with _broker(tmp_path) as js:
         bucket = NatsJsonKvBucket(
-            js=js, policy=KvBucketPolicy(bucket="integration", ttl_seconds=60)
+            js=js,
+            policy=KvBucketPolicy(
+                bucket="integration", ttl_seconds=60, allow_write_ttl=True
+            ),
         )
         created = await bucket.create("items.one", {"value": 1})
         async with bucket.watch("items.") as changes:
@@ -68,3 +71,56 @@ async def test_real_kv_watch_replay_idle_heartbeats_and_consumer_loss(tmp_path):
             with anyio.fail_after(3):
                 assert (await anext(changes)).entry == updated
                 assert isinstance(await anext(changes), KvWatchBarrier)
+
+
+@pytest.mark.asyncio
+async def test_lists_delete_consumers_and_bad_json_does_not_break_shared_watch(
+    tmp_path,
+):
+    async with _broker(tmp_path) as js:
+        bucket = NatsJsonKvBucket(
+            js=js,
+            policy=KvBucketPolicy(
+                bucket="integration", ttl_seconds=60, allow_write_ttl=True
+            ),
+        )
+        created = await bucket.create("items.one", {"value": 1})
+        for prefix in ("", "items."):
+            for _ in range(5):
+                assert await bucket.items(prefix) == (created,)
+                assert (
+                    await js.stream_info("KV_integration")
+                ).state.consumer_count == 0
+        await js.publish("$KV.integration.items.invalid", b"{")
+        invalid = await bucket.get("items.invalid")
+        assert invalid is not None and invalid.parse_error
+        assert invalid.raw == b"{"
+        async with bucket.watch("items.") as changes:
+            with anyio.fail_after(3):
+                seen = {}
+                async for change in changes:
+                    if isinstance(change, KvWatchBarrier):
+                        break
+                    seen[change.key] = change.entry
+                assert seen["items.invalid"] == invalid
+                assert seen["items.one"] == created
+                updated = await bucket.update(
+                    "items.one", {"value": 2}, revision=created.revision
+                )
+                assert (await anext(changes)).entry == updated
+        assert (await js.stream_info("KV_integration")).state.consumer_count == 0
+
+
+@pytest.mark.asyncio
+async def test_broker_policy_adjustment_is_rejected_instead_of_silently_accepted(
+    tmp_path,
+):
+    async with _broker(tmp_path) as js:
+        # NATS 2.14 enables message TTL when subject delete markers are enabled.
+        # A strict adapter must inspect the CREATE result, not assume an UPDATE
+        # to the requested policy was honored.
+        bucket = NatsJsonKvBucket(
+            js=js, policy=KvBucketPolicy(bucket="incompatible", ttl_seconds=60)
+        )
+        with pytest.raises(KvUnavailable, match="allow_msg_ttl"):
+            await bucket.items()

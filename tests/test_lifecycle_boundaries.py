@@ -335,6 +335,13 @@ _APPROVED_OTHER_WATCH_BOUNDARIES = Counter[_WatchBoundary](
             "kv",
             "watch",
         ): 1,
+        # Exact maintenance snapshots own and delete their temporary consumer.
+        (
+            Path("src/deckr/substrates/_nats_kv_records.py"),
+            "kv_snapshot_entries",
+            "kv",
+            "watch",
+        ): 1,
         (
             Path("src/deckr/substrates/_supervised_substrate.py"),
             "SupervisedNatsSubstrate.subscribe",

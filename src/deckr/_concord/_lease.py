@@ -14,6 +14,7 @@ from deckr._concord._models import (
     ConcordConflict,
     ConcordConflictCode,
     ConcordUnavailable,
+    ConcordUnavailableCode,
     ContractHandle,
     ParticipantHandle,
 )
@@ -82,6 +83,7 @@ class ConcordParticipantLease:
         self._authority_lost = False
         self._refresh_delay: float | None = None
         self._last_refresh_at: float | None = None
+        self._expires_at: float | None = None
         self._on_change = on_change
         self._operation_lock = anyio.Lock()
         self._version = 0
@@ -106,6 +108,7 @@ class ConcordParticipantLease:
         if (
             not self._view.is_current()
             or self._source_generations != self._view.source_generations
+            or (self._expires_at is not None and monotonic() >= self._expires_at)
         ):
             self.relinquish_local_authority()
         return self._authority_token
@@ -148,6 +151,7 @@ class ConcordParticipantLease:
                 contract_id=self.contract.contract_id,
             ) as subscription:
                 self._token_create_started = True
+                started = monotonic()
                 token = await self._store.prepare_attach(
                     self.contract,
                     self.participant,
@@ -155,6 +159,7 @@ class ConcordParticipantLease:
                     token_id=self._token_id,
                 )
                 self._owned_token = token
+                self._expires_at = started + token.ttl_seconds
                 await self._abort_attach_if_inactive()
                 last_conflict: ConcordConflict | None = None
                 for attempt in range(MAX_ATTACHED_PARTICIPANT_CAS_ATTEMPTS):
@@ -195,9 +200,17 @@ class ConcordParticipantLease:
                     )
                     await self._view.wait_token_revision(token.key, token.revision)
                     await self._abort_attach_if_inactive()
+                    if monotonic() >= self._expires_at:
+                        await self.fail_closed_unavailable(
+                            "Participant attachment expired"
+                        )
+                        raise ConcordUnavailable(
+                            ConcordUnavailableCode.STORE_UNAVAILABLE,
+                            "Participant attachment expired",
+                        )
                     self._authority_token = token
                     self._refresh_delay = concord_token_refresh_delay(token.ttl_seconds)
-                    self._last_refresh_at = monotonic()
+                    self._last_refresh_at = started
                     await self._publish(
                         ConcordParticipantLeasePhase.ACTIVE,
                         local_authority=True,
@@ -225,9 +238,30 @@ class ConcordParticipantLease:
                     key=self.contract.key,
                 )
             try:
-                refreshed = await self._store.refresh(self._authority_token)
+                started = monotonic()
+                # Include time spent waiting for the write and its confirmation.
+                # A retry or delayed timer cannot move the held token's deadline.
+                expires = self._expires_at
+                remaining = (
+                    expires - started
+                    if expires is not None
+                    else self._authority_token.ttl_seconds
+                )
+                with anyio.fail_after(max(0.0, remaining)):
+                    refreshed = await self._store.refresh(self._authority_token)
+                self._owned_token = refreshed
+                if expires is not None and monotonic() >= expires:
+                    raise TimeoutError
+            except TimeoutError as exc:
+                await self.fail_closed_unavailable(
+                    "Participant renewal deadline exceeded"
+                )
+                raise ConcordUnavailable(
+                    ConcordUnavailableCode.STORE_UNAVAILABLE,
+                    "Participant renewal deadline exceeded",
+                ) from exc
             except ConcordUnavailable as exc:
-                self._authority_token = None
+                self.relinquish_local_authority()
                 await self._publish(
                     ConcordParticipantLeasePhase.UNAVAILABLE,
                     local_authority=False,
@@ -235,7 +269,7 @@ class ConcordParticipantLease:
                 )
                 raise
             except ConcordConflict as exc:
-                self._authority_token = None
+                self.relinquish_local_authority()
                 await self._publish(
                     ConcordParticipantLeasePhase.TERMINAL,
                     local_authority=False,
@@ -257,7 +291,8 @@ class ConcordParticipantLease:
             self._owned_token = refreshed
             self._authority_token = refreshed
             self._refresh_delay = concord_token_refresh_delay(refreshed.ttl_seconds)
-            self._last_refresh_at = monotonic()
+            self._last_refresh_at = started
+            self._expires_at = started + refreshed.ttl_seconds
             return refreshed
 
     async def fail_closed_unavailable(self, reason: str) -> None:
@@ -282,10 +317,14 @@ class ConcordParticipantLease:
         while not self._closed:
             token = self.token
             if token is None:
+                if self._authority_lost and not self._closed:
+                    await self.fail_closed_unavailable("Participant authority expired")
                 return
             delay = self._next_heartbeat_delay()
             await anyio.sleep(delay)
             if self._closed or self.token is None:
+                if not self._closed:
+                    await self.fail_closed_unavailable("Participant authority expired")
                 return
             try:
                 await self.refresh()

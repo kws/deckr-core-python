@@ -570,3 +570,67 @@ async def test_close_wins_when_initial_readiness_returns_after_cancellation(
         assert errors
         assert context.state.phase is ConcordLifecyclePhase.CLOSED
         assert not context.state.current
+
+
+@pytest.mark.asyncio
+async def test_blocked_required_renewal_expires_and_cannot_resume() -> None:
+    class BlockedTokens(MemoryJsonKvBucket):
+        def __init__(self):
+            super().__init__(bucket="tokens", ttl_seconds=1)
+            self.entered = anyio.Event()
+            self.release = anyio.Event()
+
+        async def update(self, *args, **kwargs):
+            self.entered.set()
+            await self.release.wait()
+            return await super().update(*args, **kwargs)
+
+    tokens = BlockedTokens()
+    async with (
+        _running_concord(tokens=tokens) as concord,
+        concord.propose(
+            _Endpoint(CONTROLLER, "session"),
+            _spec(participants=(CONTROLLER,), participant_sessions={}),
+        ) as agreement,
+    ):
+        with anyio.fail_after(3):
+            await tokens.entered.wait()
+            while agreement.state.local_authority:
+                await anyio.sleep(0.01)
+        assert agreement._lease.token is None
+        tokens.release.set()
+        await anyio.sleep(0.02)
+        assert not agreement.state.local_authority
+        assert agreement._lease.token is None
+
+
+@pytest.mark.asyncio
+async def test_late_renewal_confirmation_never_extends_expired_authority(monkeypatch):
+    async with _running_concord() as concord:
+        contract = await concord._create_contract(
+            (CONTROLLER,), profile=PROFILE, created_by=CONTROLLER
+        )
+        lease = ConcordParticipantLease(
+            concord._repository,
+            concord._view,
+            contract=contract,
+            participant=CONTROLLER,
+            session_id="session",
+        )
+        await lease.attach()
+        refresh = concord._repository.refresh
+
+        async def delayed_confirmation(token):
+            result = await refresh(token)
+            monkeypatch.setattr(
+                "deckr._concord._lease.monotonic", lambda: lease._expires_at + 1
+            )
+            return result
+
+        monkeypatch.setattr(concord._repository, "refresh", delayed_confirmation)
+        from deckr.concord import ConcordUnavailable
+
+        with pytest.raises(ConcordUnavailable, match="deadline"):
+            await lease.refresh()
+        assert lease.token is None
+        await lease.aclose()

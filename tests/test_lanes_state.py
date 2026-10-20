@@ -738,3 +738,38 @@ async def test_nats_lane_subscriber_buffer_full_unsubscribes(caplog) -> None:
 
     assert "subscriber buffer full" in caplog.text
     assert "lane=services endpoint=service:media session=service-session" in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("late_success", [False, True])
+async def test_close_cancels_initial_connection_and_closes_late_client(
+    monkeypatch, late_success
+):
+    started = anyio.Event()
+    client = SimpleNamespace(close=AsyncMock(), jetstream=lambda: "jetstream")
+
+    async def connect(*args, **kwargs):
+        started.set()
+        try:
+            await anyio.sleep_forever()
+        except anyio.get_cancelled_exc_class():
+            if not late_success:
+                raise
+            return client
+
+    monkeypatch.setitem(sys.modules, "nats", SimpleNamespace(connect=connect))
+    substrate = NatsSubstrate(lane_contracts=DEFAULT_MESSAGE_CONTRACT_REGISTRY)
+
+    async def attempt():
+        with pytest.raises(RuntimeError, match="closed during connection"):
+            await substrate.connect()
+
+    with anyio.fail_after(1):
+        async with anyio.create_task_group() as tasks:
+            tasks.start_soon(attempt)
+            await started.wait()
+            await substrate.aclose()
+    assert substrate._nc is None
+    assert client.close.await_count == int(late_success)
+    with pytest.raises(RuntimeError, match="closed"):
+        await substrate.connect()

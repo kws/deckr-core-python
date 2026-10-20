@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from collections.abc import Mapping
+
+import anyio
 
 from deckr.core.kv import (
     KvChange,
     KvEntry,
+    KvUnavailable,
     kv_value,
 )
 
@@ -59,13 +63,41 @@ NATS_WATCH_INACTIVE_THRESHOLD_SECONDS = 1.0
 
 
 def kv_entry_from_raw(bucket: str, entry) -> KvEntry:
-    value = json.loads(entry.value.decode("utf-8")) if entry.value else {}
-    return KvEntry(
-        bucket=bucket,
-        key=str(entry.key),
-        value=kv_value(value),
-        revision=int(entry.revision),
-    )
+    return kv_entry_from_bytes(bucket, str(entry.key), int(entry.revision), entry.value)
+
+
+def kv_entry_from_bytes(bucket: str, key: str, revision: int, raw: bytes) -> KvEntry:
+    """Bad record bytes are an invalid observation, never a continuity failure."""
+
+    def object_pairs(pairs):
+        result = {}
+        for name, value in pairs:
+            if name in result:
+                raise ValueError("Duplicate JSON object key")
+            result[name] = value
+        return result
+
+    def scalars(value):
+        if isinstance(value, str):
+            value.encode("utf-8")
+        elif isinstance(value, float) and not math.isfinite(value):
+            raise ValueError("Non-finite JSON number")
+        elif isinstance(value, list):
+            for item in value:
+                scalars(item)
+        elif isinstance(value, dict):
+            for name, item in value.items():
+                scalars(name)
+                scalars(item)
+
+    try:
+        value = json.loads(raw, object_pairs_hook=object_pairs)
+        scalars(value)
+        if not isinstance(value, dict):
+            raise ValueError("KV value must be a JSON object")
+        return KvEntry(bucket, key, kv_value(value), revision)
+    except (ValueError, TypeError, UnicodeError) as exc:
+        return KvEntry(bucket, key, kv_value({}), revision, str(exc), raw)
 
 
 def kv_change_from_raw(bucket: str, entry) -> KvChange | None:
@@ -132,13 +164,8 @@ def kv_watch_pattern(prefix: str) -> str:
 
 
 async def kv_keys(kv, prefix: str) -> tuple[str, ...]:
-    if not prefix:
-        return await kv_keys_unfiltered(kv, prefix)
-
     try:
         return await kv_keys_by_watch(kv, prefix)
-    except (AttributeError, TypeError):
-        return await kv_keys_unfiltered(kv, prefix)
     except Exception as exc:
         if is_key_missing(exc):
             return ()
@@ -150,7 +177,7 @@ async def kv_keys_by_watch(kv, prefix: str) -> tuple[str, ...]:
         kv_watch_pattern(prefix),
         ignore_deletes=True,
         meta_only=True,
-        inactive_threshold=5 * 60,
+        inactive_threshold=NATS_WATCH_INACTIVE_THRESHOLD_SECONDS,
     )
     keys: list[str] = []
     try:
@@ -161,26 +188,46 @@ async def kv_keys_by_watch(kv, prefix: str) -> tuple[str, ...]:
             if key.startswith(prefix):
                 keys.append(key)
     finally:
-        try:
-            await watcher.stop()
-        finally:
-            await delete_ephemeral_consumer(
-                getattr(watcher, "_sub", None),
-                reason=f"KV keys prefix {prefix!r}",
-            )
+        await _close_snapshot_watcher(watcher, reason=f"KV keys prefix {prefix!r}")
     return tuple(keys)
 
 
 async def kv_keys_unfiltered(kv, prefix: str) -> tuple[str, ...]:
+    return await kv_keys_by_watch(kv, prefix)
+
+
+async def kv_snapshot_entries(kv, bucket: str, prefix: str) -> tuple[KvEntry, ...]:
+    watcher = await kv.watch(
+        kv_watch_pattern(prefix),
+        ignore_deletes=True,
+        inactive_threshold=NATS_WATCH_INACTIVE_THRESHOLD_SECONDS,
+    )
+    entries = {}
     try:
-        keys = await kv.keys()
-    except Exception as exc:
-        if is_key_missing(exc):
-            return ()
-        raise
-    if keys is None:
-        return ()
-    return tuple(str(key) for key in keys if str(key).startswith(prefix))
+        async for raw in watcher:
+            if raw is None:
+                break
+            if str(raw.key).startswith(prefix) and not kv_entry_is_absent_marker(raw):
+                entry = kv_entry_from_raw(bucket, raw)
+                entries[entry.key] = entry
+    finally:
+        await _close_snapshot_watcher(watcher, reason="KV snapshot")
+    return tuple(entries[key] for key in sorted(entries))
+
+
+async def _close_snapshot_watcher(watcher, *, reason: str) -> None:
+    # Cancellation of the list must not cancel its owned consumer cleanup.
+    # Give unsubscribe and deletion independent bounded attempts.
+    try:
+        with anyio.move_on_after(NATS_WATCH_CLEANUP_TIMEOUT_SECONDS, shield=True):
+            await watcher.stop()
+    finally:
+        with anyio.fail_after(NATS_WATCH_CLEANUP_TIMEOUT_SECONDS, shield=True):
+            deleted = await delete_ephemeral_consumer(
+                getattr(watcher, "_sub", None), reason=reason
+            )
+            if not deleted:
+                raise KvUnavailable("Owned NATS snapshot consumer cleanup is pending")
 
 
 def _raw_header(entry, key: str) -> str | None:
@@ -198,16 +245,19 @@ def _raw_header(entry, key: str) -> str | None:
     return str(value) if value is not None else None
 
 
-async def delete_ephemeral_consumer(subscription, *, reason: str) -> None:
+async def delete_ephemeral_consumer(subscription, *, reason: str) -> bool:
     stream = getattr(subscription, "_stream", None)
     consumer = getattr(subscription, "_consumer", None)
     js = getattr(subscription, "_js", None)
     jsm = getattr(js, "_jsm", None)
     if not stream or not consumer or jsm is None:
-        return
+        return False
     try:
         await jsm.delete_consumer(stream, consumer)
-    except Exception:
+        return True
+    except Exception as exc:
+        if is_key_missing(exc):
+            return True
         logger.debug(
             "Could not delete NATS ephemeral consumer stream=%s consumer=%s after %s",
             stream,
@@ -215,6 +265,7 @@ async def delete_ephemeral_consumer(subscription, *, reason: str) -> None:
             reason,
             exc_info=True,
         )
+        return False
 
 
 def exception_names(exc: BaseException) -> set[str]:

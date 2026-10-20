@@ -144,6 +144,23 @@ Real-broker tests are enabled by `uv sync --extra supervised-nats`, or by settin
 loopback broker and verify replay, idle heartbeats, and consumer loss. CI installs
 the extra so these tests run there.
 
+`DeckrNatsSubstrate.aclose()` cancels an outstanding initial connection attempt,
+including cleanup of a client that arrives after cancellation. Required Concord
+renewals use an absolute monotonic expiry; blocked refreshes and late completions
+cannot extend local authority. Invalid JSON records remain invalid observations
+without making unrelated shared state unavailable.
+
+NATS buckets are created with their complete policy atomically, including TTL
+deletion markers, so concurrent processes cannot observe an intermediate policy.
+Explicit lists read values from one owned snapshot consumer and delete it before
+returning, including cancellation cleanup. They do not list keys and then fetch
+every value separately.
+
+With the three implementations checked out as siblings, the external
+[`mixed-language` harness](../mixed-language/README.md) uses
+`scripts/interop_peer.py` to test real concurrent startup, attachment, lossless
+numeric terms, automatic renewal, broker loss, and recovery across languages.
+
 ## Managed hardware
 
 `Deckr.hardware(endpoint)` creates a `DeckrHardware` context for a controller
