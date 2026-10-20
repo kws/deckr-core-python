@@ -166,7 +166,9 @@ class NatsKvWatch(anyio.abc.ObjectReceiveStream[KvChange | KvWatchBarrier]):
                 raise
             with anyio.move_on_after(HEALTH_POLL_SECONDS) as scope:
                 value = await self._receive.receive()
-            if not scope.cancel_called:
+            # A deadline may fire after receive has already delivered a value.
+            # Discard only a cancelled receive, never an observed broker event.
+            if not scope.cancelled_caught:
                 if self._failure is not None:
                     raise self._failure
                 try:
