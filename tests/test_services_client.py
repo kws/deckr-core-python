@@ -340,6 +340,7 @@ def _agreement(
     agreement = SimpleNamespace(
         contract=contract,
         state=state,
+        cleanup_failure=None,
         cancel=AsyncMock(return_value=True),
         aclose=AsyncMock(),
     )
@@ -381,6 +382,7 @@ def _lease(
 
 class _RaceAgreement:
     def __init__(self, descriptor: ServiceDescriptor, contract_id: str) -> None:
+        self.cleanup_failure = None
         participants = tuple(sorted((_CLIENT_ADDRESS, descriptor.endpoint), key=str))
         self.contract = ContractHandle(
             key=f"contracts.{contract_id}.1",
@@ -1046,6 +1048,25 @@ async def test_aclose_closes_active_service_use_lease_once() -> None:
 
 
 @pytest.mark.asyncio
+async def test_runtime_cleanup_failure_still_closes_other_service_leases() -> None:
+    agreements = [_agreement(), _agreement()]
+    agreements[0].cleanup_failure = RuntimeError("first cleanup failed")
+    services = _services(
+        endpoint=SimpleNamespace(address=_CLIENT_ADDRESS, session_id="client-session"),
+        concord=SimpleNamespace(propose=Mock(side_effect=agreements)),
+    )
+    contexts = [services.use(_descriptor()), services.use(_descriptor())]
+    for context in contexts:
+        await context.__aenter__()
+    with pytest.raises(ServiceUnavailable, match="first cleanup failed"):
+        await services.aclose()
+    for agreement in agreements:
+        agreement.aclose.assert_awaited_once()
+    for context in contexts:
+        await context.__aexit__(None, None, None)
+
+
+@pytest.mark.asyncio
 async def test_use_explicit_timeout_cancels_pending_contract() -> None:
     agreement = _agreement(
         ContractValidity(ContractValidityStatus.NOT_YET_FULFILLED),
@@ -1403,6 +1424,12 @@ async def test_service_request_preserves_timeout_and_rechecks_authority(revoke) 
 
     endpoint.request.assert_awaited_once()
     assert endpoint.request.await_args.kwargs["timeout"] == 12.0
+    assert endpoint.request.await_args.kwargs["subject"] == entity_subject(
+        "service",
+        serviceId="demo-home",
+        namespace="dev.deckr.demo.service",
+        name="play",
+    )
     assert endpoint.request.await_args.kwargs["contract"] == {
         "contractId": "contract-1",
         "generation": 1,
@@ -1431,6 +1458,12 @@ async def test_managed_service_contract_sends_service_to_consumer_message() -> N
     assert endpoint.send.await_args.kwargs["recipient"] == _CLIENT_ADDRESS
     assert endpoint.send.await_args.kwargs["recipient_session_id"] == "client-session"
     assert endpoint.send.await_args.kwargs["message_type"] == "serviceMessage"
+    assert endpoint.send.await_args.kwargs["subject"] == entity_subject(
+        "service",
+        serviceId="demo-home",
+        namespace="dev.deckr.demo.service",
+        name="stateChanged",
+    )
     assert endpoint.send.await_args.kwargs["body"] == {
         "serviceNamespace": "dev.deckr.demo.service",
         "name": "stateChanged",
@@ -1519,26 +1552,36 @@ async def test_managed_service_contract_request_validates_response_metadata_and_
 
     endpoint.request.assert_awaited_once()
     assert endpoint.request.await_args.kwargs["timeout"] == 3.0
+    assert endpoint.request.await_args.kwargs["subject"] == entity_subject(
+        "service",
+        serviceId="demo-home",
+        namespace="dev.deckr.demo.service",
+        name="collectDiagnostics",
+    )
     assert participant.validate_calls == []
 
 
 @pytest.mark.asyncio
-async def test_managed_service_contract_rejects_response_subject_mismatch() -> None:
+@pytest.mark.parametrize("field", ["serviceId", "namespace", "name"])
+@pytest.mark.parametrize("value", [None, "other"])
+async def test_managed_service_contract_rejects_response_subject_mismatch(
+    field: str, value: str | None
+) -> None:
     managed = _managed_service_contract()
     participant = _FakeManagedServiceParticipant((managed,))
 
     async def request(**kwargs):
+        identifiers = dict(kwargs["subject"].identifiers)
+        if value is None:
+            identifiers.pop(field)
+        else:
+            identifiers[field] = value
         return service_response_message(
             sender=_CLIENT_ADDRESS,
             sender_session_id="client-session",
             recipient=service_address("demo-home"),
             recipient_session_id="service-session",
-            subject=entity_subject(
-                "service",
-                serviceId="demo-home",
-                namespace="dev.deckr.demo.service",
-                name="stateChanged",
-            ),
+            subject=entity_subject("service", **identifiers),
             in_reply_to="request-message",
             contract=kwargs["contract"],
             body=ServiceMessageBody(
@@ -1719,19 +1762,29 @@ async def test_authorize_inbound_message_validates_service_to_consumer_scope() -
 
     assert body.name == "stateChanged"
 
-    wrong_subject = message.model_copy(
+    message = message.model_copy(
         update={
             "subject": entity_subject(
-                "service",
-                serviceId=descriptor.service_id,
-                namespace=descriptor.namespace,
-                name="collectDiagnostics",
+                "service", **message.subject.identifiers, resourceId="lamp"
             )
         }
     )
-    with pytest.raises(ServiceUnavailable) as exc_info:
-        await services._authorize_inbound_message(lease, wrong_subject)  # noqa: SLF001
-    assert exc_info.value.code == "invalid_service_response"
+    assert (
+        await services._authorize_inbound_message(lease, message)
+    ).name == "stateChanged"  # noqa: SLF001
+    for field in ("serviceId", "namespace", "name"):
+        for value in (None, "other"):
+            identifiers = dict(message.subject.identifiers)
+            if value is None:
+                identifiers.pop(field)
+            else:
+                identifiers[field] = value
+            wrong_subject = message.model_copy(
+                update={"subject": entity_subject("service", **identifiers)}
+            )
+            with pytest.raises(ServiceUnavailable) as exc_info:
+                await services._authorize_inbound_message(lease, wrong_subject)  # noqa: SLF001
+            assert exc_info.value.code == "invalid_service_response"
 
     wrong_session = message.model_copy(update={"sender_session_id": "old-session"})
     with pytest.raises(ServiceUnavailable) as exc_info:

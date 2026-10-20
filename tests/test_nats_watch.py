@@ -2,9 +2,10 @@
 
 from types import SimpleNamespace
 
+import anyio
 import pytest
 
-from deckr.core.kv import KvUnavailable
+from deckr.core.kv import KvChange, KvUnavailable, KvWatchBarrier
 from deckr.substrates._nats_watch import NatsKvWatch
 
 
@@ -118,5 +119,43 @@ async def test_flow_control_is_acknowledged():
     try:
         await js._nc.callback(SimpleNamespace(headers={"Status": "100"}, reply="flow"))
         assert js._nc.replies == ["flow"]
+    finally:
+        await stream.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "item", [KvWatchBarrier(1), KvChange("test", "key", 1, "delete")]
+)
+async def test_poll_deadline_does_not_discard_an_already_received_event(
+    monkeypatch, item
+):
+    _js, stream = await watch()
+    move_on_after = anyio.move_on_after
+    receive = stream._receive.receive
+    scopes = []
+    received = False
+
+    def poll_scope(seconds):
+        scope = move_on_after(seconds)
+        scopes.append(scope)
+        return scope
+
+    async def receive_at_deadline():
+        nonlocal received
+        assert not received, "An already consumed broker event was discarded"
+        value = await receive()
+        received = True
+        # The polling deadline can fire after the receive completes, without
+        # cancelling that receive. The delivered event must still be returned.
+        scopes[-1].cancel()
+        return value
+
+    try:
+        await stream._send.send(item)
+        with monkeypatch.context() as patch:
+            patch.setattr(anyio, "move_on_after", poll_scope)
+            patch.setattr(stream._receive, "receive", receive_at_deadline)
+            assert await stream.receive() == item
     finally:
         await stream.aclose()

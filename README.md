@@ -13,6 +13,21 @@ are implementation code, not the authority for the contracts.
 Python regression tests cover protocol behavior and Deckr binding policy separately.
 They do not replace the reference repository’s conformance vectors.
 
+## Place in the project
+
+The [project repository map](https://github.com/kws/deckr#project-repositories)
+describes the reference, Python/Rust/TypeScript cores, and integration harness.
+This repository owns the Python API and its implementation tests. Applications
+own controller routing, rendering, configuration policy, drivers, and action or
+integration behavior. Generic hosting and configuration utilities remain here
+when they are reusable across those applications.
+
+The cores implement shared contracts with language-specific APIs and independent
+package versions and coverage. Real-broker interoperability is tested in
+[deckr-integration-tests](https://github.com/kws/deckr-integration-tests);
+its results apply to the workloads and source revisions recorded by that harness.
+Run Python commands below from this repository's root.
+
 ## Reference material
 
 - [Reference overview](https://github.com/kws/deckr#readme)
@@ -21,6 +36,9 @@ They do not replace the reference repository’s conformance vectors.
 - [Beacon](https://github.com/kws/deckr/blob/main/docs/beacon.md),
   [Concord](https://github.com/kws/deckr/blob/main/docs/concord.md), and
   [NATS](https://github.com/kws/deckr/blob/main/docs/deckr-nats-binding.md)
+- [Hardware](https://github.com/kws/deckr/blob/main/docs/deckr-hardware.md),
+  [services](https://github.com/kws/deckr/blob/main/docs/deckr-services.md), and
+  [Action Runtime](https://github.com/kws/deckr/blob/main/docs/deckr-action-runtime.md)
 - [Conformance scenarios](https://github.com/kws/deckr/blob/main/deckr-conformance-scenarios.md)
 
 The Python distribution does not bundle or generate reference artifacts.
@@ -57,6 +75,11 @@ implementations. Push the upstream commit before CI needs it. For a private
 `kws/deckr` repository, configure the `DECKR_SPEC_TOKEN` Actions secret with read
 access; otherwise CI uses its default GitHub token.
 
+When validating a coordinated contract or runtime change, update the source commits in
+`deckr-integration-tests/sources.lock.json` and follow that repository's
+[source-pin workflow](https://github.com/kws/deckr-integration-tests#source-pins-and-coordinated-changes).
+All three core specification pins must agree with the harness's reference pin.
+
 ## Repository layout
 
 ```text
@@ -68,9 +91,10 @@ pyproject.toml
 uv.lock
 ```
 
-Controller orchestration, rendering policy, filesystem configuration, and
-device-manager-specific behavior belong in
-[`deckr-controller`](https://github.com/kws/deckr-controller).
+Controller orchestration, rendering, layout persistence, and settings placement
+belong in application repositories such as
+[`deckr-controller`](https://github.com/kws/deckr-controller). Concrete drivers and
+device behavior belong in the hardware-manager applications.
 
 ## Development
 
@@ -81,6 +105,10 @@ Install the package and development tooling:
 ```bash
 uv sync
 ```
+
+For the same broker-test coverage as CI, install `uv sync --extra supervised-nats`
+before running the suite. Without that extra or `NATS_SERVER_BINARY`, the optional
+real-broker tests skip.
 
 Run the Python validation suite:
 
@@ -114,6 +142,9 @@ uv build
 Optional extras are `deckr[cli]`, `deckr[nats]`, and `deckr[supervised-nats]`.
 The supervised NATS extra includes the `deckr-nats-server-bin` binary package
 for hosts that supervise a local NATS server.
+`deckr[all]` installs all three extras. The CLI, component hosting, and generic
+configuration helpers support application hosts; they do not supply a controller,
+device driver, or action implementation.
 
 To inspect a running broker's Deckr state:
 
@@ -186,10 +217,35 @@ Explicit lists read values from one owned snapshot consumer and delete it before
 returning, including cancellation cleanup. They do not list keys and then fetch
 every value separately.
 
-With the three implementations checked out as siblings, the external
-[`mixed-language` harness](../mixed-language/README.md) uses
-`scripts/interop_peer.py` to test real concurrent startup, attachment, lossless
-numeric terms, automatic renewal, broker loss, and recovery across languages.
+With the reference and three implementations checked out as siblings,
+[`deckr-integration-tests`](https://github.com/kws/deckr-integration-tests)
+uses public managed service APIs for its Compose smoke and recovery workloads.
+Its [native Concord runner](https://github.com/kws/deckr-integration-tests#native-concord-lifecycle-test)
+uses `scripts/interop_peer.py` for concurrent startup, attachment, numeric terms,
+automatic renewal, broker loss, and recovery across languages.
+
+## Services and Action Runtime
+
+`Deckr.services(endpoint)` creates a `DeckrServices` context. Use `use_matching()`
+to discover and negotiate a matching service, or `use()` for a selected descriptor.
+The returned `ManagedService` provides guarded messages, requests, protected
+views, and observable lifecycle state. `Deckr.service_provider(...)` creates the
+provider boundary for an application-owned `ServiceProtocol`. Backend behavior
+and domain consent remain with the application.
+Provider entry waits and retries bounded bootstrap attempts while earlier
+ownership is unresolved. It does not advertise during that wait, and `aclose()`
+cancels entry. Managed client state retains `cleanup_failures` and
+`last_cleanup_failure` after recovery. Client shutdown reports failures from
+current or pending cleanup; an earlier completed recovery failure does not fail
+a later successful shutdown.
+
+`deckr.actions` contains action, binding, page, settings, and payload models.
+`deckr.action_runtime` supplies the Action Runtime service declaration, availability
+payloads, and message conversion helpers. Action Runtime uses
+`service:action-runtime.<providerInstanceId>` and `serviceMessage` on the
+`services` lane. Compose these helpers with the service APIs; there is no separate
+core `actions` lane. The controller owns live routing references and sends
+hardware output through a separate hardware claim.
 
 ## Managed hardware
 
@@ -295,9 +351,10 @@ independent of the reference contract bundle version.
 
    ```bash
    uv run ruff check .
-uv run ruff format --check .
+   uv run ruff format --check .
    uv run lint-imports
    uv run pytest
+   uv run python scripts/check_spec_conformance.py
    ```
 
 3. Refresh the lockfile:

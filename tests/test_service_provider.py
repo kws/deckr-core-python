@@ -13,6 +13,8 @@ from deckr.concord import (
     DEFAULT_CONCORD_TOKEN_BUCKET_NAME,
     ConcordAgreementSpec,
     ConcordLifecyclePhase,
+    ConcordUnavailable,
+    ConcordUnavailableCode,
     ContractRecord,
     ContractState,
     concord_participant_token_key,
@@ -263,6 +265,69 @@ async def test_provider_stale_owner_cleanup_gates_subscription_and_beacon(
         assert (
             ContractRecord.model_validate(entry.value).state == ContractState.CANCELLED
         )
+
+
+@pytest.mark.parametrize("close_while_waiting", [False, True])
+async def test_provider_retries_unresolved_bootstrap_without_publication(
+    monkeypatch: pytest.MonkeyPatch, close_while_waiting: bool
+) -> None:
+    protocol = _protocol()
+    deckr = mock_deckr()
+    async with (
+        deckr,
+        deckr.endpoint(SERVICE, session_id="service-session") as endpoint,
+    ):
+        bootstrap = deckr.concord.bootstrap_owner
+        attempts = 0
+        retried = anyio.Event()
+        resolved = anyio.Event()
+        entered = anyio.Event()
+        finished = anyio.Event()
+
+        async def unresolved(session):
+            nonlocal attempts
+            attempts += 1
+            if attempts > 1:
+                retried.set()
+            if not resolved.is_set():
+                raise ConcordUnavailable(
+                    ConcordUnavailableCode.STORE_UNAVAILABLE, "ownership unresolved"
+                )
+            await bootstrap(session)
+
+        monkeypatch.setattr(deckr.concord, "bootstrap_owner", unresolved)
+        provider = deckr.service_provider(endpoint, protocol, service_id="demo-home")
+
+        async def enter():
+            try:
+                await provider.__aenter__()
+                entered.set()
+            except anyio.ClosedResourceError:
+                assert close_while_waiting
+            finally:
+                finished.set()
+
+        with anyio.fail_after(2):
+            async with anyio.create_task_group() as tasks:
+                tasks.start_soon(enter)
+                await retried.wait()
+                assert not entered.is_set()
+                assert not deckr.beacon.candidates(protocol.feature_id)
+                assert deckr._message_bus.subscriptions == []  # noqa: SLF001
+                if close_while_waiting:
+                    await provider.aclose()
+                    await finished.wait()
+                    count = attempts
+                    resolved.set()
+                    await anyio.sleep(0.25)
+                    assert attempts == count
+                    assert not entered.is_set()
+                    assert not deckr.beacon.candidates(protocol.feature_id)
+                else:
+                    resolved.set()
+                    await entered.wait()
+                    assert len(deckr.beacon.candidates(protocol.feature_id)) == 1
+                    await provider.aclose()
 
 
 async def test_provider_failed_advertisement_closes_participant_and_subscription(

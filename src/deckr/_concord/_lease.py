@@ -93,6 +93,7 @@ class ConcordParticipantLease:
             local_authority=False,
         )
         self._closed = False
+        self.cleanup_failure: Exception | None = None
         self._close_started = False
         self._close_lock = anyio.Lock()
         self._close_done = anyio.Event()
@@ -357,12 +358,13 @@ class ConcordParticipantLease:
                     local_authority=False,
                 )
                 self._authority_token = None
-                with anyio.move_on_after(CONCORD_LIFECYCLE_CLEANUP_SECONDS):
+                with anyio.move_on_after(CONCORD_LIFECYCLE_CLEANUP_SECONDS) as cleanup:
                     async with self._operation_lock:
                         if withdraw:
                             try:
                                 await self._withdraw_retained_unlocked()
-                            except (ConcordConflict, ConcordUnavailable):
+                            except (ConcordConflict, ConcordUnavailable) as exc:
+                                self.cleanup_failure = exc
                                 logger.debug(
                                     "Concord participant token cleanup failed "
                                     "contract=%s generation=%s participant=%s session=%s",
@@ -378,6 +380,10 @@ class ConcordParticipantLease:
                         self._owned_token = None
                         self._token_create_started = False
                         self._last_refresh_at = None
+                if cleanup.cancelled_caught:
+                    self.cleanup_failure = TimeoutError(
+                        "Concord token cleanup timed out"
+                    )
                 await self._publish(
                     ConcordParticipantLeasePhase.CLOSED,
                     local_authority=False,
