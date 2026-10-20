@@ -733,6 +733,13 @@ async def test_authorize_service_message_matches_exact_contract_pointer() -> Non
         name="setItemScope",
         namespace=protocol.namespace,
     )
+    request = request.model_copy(
+        update={
+            "subject": entity_subject(
+                "service", **request.subject.identifiers, resourceId="lamp"
+            )
+        }
+    )
 
     result = await authorize_service_message(
         participant,
@@ -826,7 +833,11 @@ async def test_authorize_service_message_rejects_sender_not_named_by_contract() 
 
 
 @pytest.mark.asyncio
-async def test_authorize_service_message_rejects_subject_scope_mismatch() -> None:
+@pytest.mark.parametrize("field", ["serviceId", "namespace", "name"])
+@pytest.mark.parametrize("value", [None, "other"])
+async def test_authorize_service_message_rejects_subject_scope_mismatch(
+    field: str, value: str | None
+) -> None:
     protocol, lease, _view_ref = await _service_view_context()
     managed = _managed_contract(lease.contract)
     participant = _FakeServiceParticipant((managed,))
@@ -834,15 +845,14 @@ async def test_authorize_service_message_rejects_subject_scope_mismatch() -> Non
         lease.contract,
         name="setItemScope",
         namespace=protocol.namespace,
-    ).model_copy(
-        update={
-            "subject": entity_subject(
-                "service",
-                serviceId="other-service",
-                namespace=protocol.namespace,
-                name="setItemScope",
-            )
-        }
+    )
+    identifiers = dict(request.subject.identifiers)
+    if value is None:
+        identifiers.pop(field)
+    else:
+        identifiers[field] = value
+    request = request.model_copy(
+        update={"subject": entity_subject("service", **identifiers)}
     )
 
     with pytest.raises(ServiceUseAuthorizationError) as exc_info:
