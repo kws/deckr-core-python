@@ -724,7 +724,10 @@ async def test_replace_devices_replacement_cancels_live_claim_and_resets(
         await controller_cm.__aexit__(None, None, None)
 
 
-async def test_remove_device_cancels_live_claim_contract_without_lane_event() -> None:
+@pytest.mark.parametrize("released_registry", [False, True])
+async def test_remove_device_cancels_live_claim_contract_without_lane_event(
+    released_registry: bool,
+) -> None:
     deckr, endpoint_cm, runtime = await _runtime()
     controller_cm = deckr.endpoint(controller_address("controller-main"))
     controller_endpoint = await controller_cm.__aenter__()
@@ -743,6 +746,11 @@ async def test_remove_device_cancels_live_claim_contract_without_lane_event() ->
             await concord._validate(contract)
         ).status == ContractValidityStatus.VALID
 
+        if released_registry:
+            # Admission can release its registry before the observer clears the
+            # hardware claim. Removal still has to cancel the known contract.
+            runtime._devices.pop("stream-deck-mini")
+            await runtime._claim_manager.notify_policy_changed()
         deckr._message_bus.publish.reset_mock()
         deckr._message_bus.publish_reply.reset_mock()
         await runtime.remove_device("stream-deck-mini", reason="disconnected")
@@ -751,7 +759,8 @@ async def test_remove_device_cancels_live_claim_contract_without_lane_event() ->
 
         record = await concord._contract_record(contract)
         assert record is not None
-        assert record.cancel_reason == "hardware device stream-deck-mini disconnected"
+        if not released_registry:
+            assert record.cancel_reason == "hardware device stream-deck-mini disconnected"
         assert (await concord._validate(contract)).status == (
             ContractValidityStatus.CANCELLED
         )

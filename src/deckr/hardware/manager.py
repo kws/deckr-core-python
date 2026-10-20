@@ -587,10 +587,15 @@ class HardwareManagerRuntime(HardwareManagerAdvertising):
             cancelled_claims: list[LiveHardwareClaim] = []
             for claim in claims:
                 try:
-                    cancelled = await self._claim_manager.cancel(
-                        claim.contract,
-                        reason=reason,
-                    )
+                    if self._claim_manager.managed_contract(claim.contract) is None:
+                        # The participant already revoked authority and owns
+                        # cleanup; only the hardware observer is still behind.
+                        cancelled = True
+                    else:
+                        cancelled = await self._claim_manager.cancel(
+                            claim.contract,
+                            reason=reason,
+                        )
                 except (ConcordConflict, ConcordUnavailable):
                     logger.debug(
                         "Could not cancel hardware claim %s for unavailable device %s",
