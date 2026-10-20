@@ -511,6 +511,7 @@ class DeckrServices:
 
     async def aclose(self) -> None:
         with anyio.CancelScope(shield=True):
+            failures: list[ServiceUnavailable] = []
             try:
                 for manager in tuple(self._shared_managers.values()):
                     aclose = getattr(manager, "aclose", None)
@@ -518,10 +519,13 @@ class DeckrServices:
                         await aclose()
                 self._shared_managers.clear()
                 for lease in tuple(self._active_service_use_leases.values()):
-                    await self._close_active_service_use_lease(
-                        lease,
-                        reason="service_use_closed",
-                    )
+                    try:
+                        await self._close_active_service_use_lease(
+                            lease,
+                            reason="service_use_closed",
+                        )
+                    except ServiceUnavailable as exc:
+                        failures.append(exc)
             finally:
                 for directory in tuple(self._directories.values()):
                     await directory.aclose()
@@ -529,6 +533,8 @@ class DeckrServices:
                 for store in tuple(self._view_stores.values()):
                     await store.aclose()
                 self._view_stores.clear()
+            if failures:
+                raise failures[0]
 
     async def _close_active_service_use_lease(
         self,

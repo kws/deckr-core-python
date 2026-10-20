@@ -1048,6 +1048,25 @@ async def test_aclose_closes_active_service_use_lease_once() -> None:
 
 
 @pytest.mark.asyncio
+async def test_runtime_cleanup_failure_still_closes_other_service_leases() -> None:
+    agreements = [_agreement(), _agreement()]
+    agreements[0].cleanup_failure = RuntimeError("first cleanup failed")
+    services = _services(
+        endpoint=SimpleNamespace(address=_CLIENT_ADDRESS, session_id="client-session"),
+        concord=SimpleNamespace(propose=Mock(side_effect=agreements)),
+    )
+    contexts = [services.use(_descriptor()), services.use(_descriptor())]
+    for context in contexts:
+        await context.__aenter__()
+    with pytest.raises(ServiceUnavailable, match="first cleanup failed"):
+        await services.aclose()
+    for agreement in agreements:
+        agreement.aclose.assert_awaited_once()
+    for context in contexts:
+        await context.__aexit__(None, None, None)
+
+
+@pytest.mark.asyncio
 async def test_use_explicit_timeout_cancels_pending_contract() -> None:
     agreement = _agreement(
         ContractValidity(ContractValidityStatus.NOT_YET_FULFILLED),
