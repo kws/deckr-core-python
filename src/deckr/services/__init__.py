@@ -23,6 +23,7 @@ from deckr.services.messages import (
     service_message_schema,
     service_response_message,
 )
+from deckr.services.payload_validation import register_service_payload_validator
 from deckr.services.provider import ServiceProvider, ServiceProviderRequest
 from deckr.services.runtime import (
     AuthorizedServiceMessage,
@@ -70,6 +71,7 @@ from deckr.services.views import (
 )
 
 __all__ = [
+    "register_service_payload_validator",
     "SERVICE_MESSAGE",
     "SERVICE_LANE_CONTRACT",
     "AuthorizedServiceMessage",

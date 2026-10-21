@@ -152,11 +152,38 @@ def main() -> None:
     fixture_count = check_protocol_fixtures()
     action_count = check_action_runtime_semantics()
     action_fixtures = check_action_runtime_fixtures()
+    check_action_runtime_declaration()
     print(
         f"Passed {vector_count} vector cases and {fixture_count} protocol fixtures "
         f"and {action_count} Action Runtime semantic cases "
         f"and {action_fixtures} Action Runtime fixtures "
+        "and the Action Runtime service declaration "
         f"from {CONTRACT_ROOT}"
+    )
+
+
+def check_action_runtime_declaration() -> None:
+    from deckr.action_runtime import ACTION_RUNTIME_SERVICE_PROTOCOL as protocol
+
+    actual = {
+        "namespace": protocol.namespace,
+        "featureId": protocol.feature_id,
+        "advertisementProfile": protocol.advertisement_profile,
+        "useProfile": protocol.use_profile,
+        "operations": {
+            name: value.to_dict() for name, value in protocol.operations.items()
+        },
+        "messages": {
+            name: value.to_dict() for name, value in protocol.messages.items()
+        },
+        "viewFamilies": {
+            name: value.to_dict() for name, value in protocol.view_families.items()
+        },
+    }
+    equal(
+        actual,
+        artifact("catalogs/action-runtime-protocol.v1.json"),
+        "Action Runtime service declaration",
     )
 
 

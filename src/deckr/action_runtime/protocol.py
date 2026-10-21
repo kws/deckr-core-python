@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from typing import Any
 
@@ -51,10 +52,12 @@ from deckr.services import (
     ServiceMessageDirection,
     ServiceMessageIntent,
     ServiceOperationDefinition,
+    ServicePayloadSchema,
     ServiceProtocol,
     ServiceViewFamilyDefinition,
     ServiceViewRef,
     ServiceViewWriter,
+    register_service_payload_validator,
     service_view_key,
 )
 
@@ -199,6 +202,14 @@ def action_runtime_service_protocol() -> ServiceProtocol:
     operations: dict[str, ServiceOperationDefinition] = {}
     for name in sorted(CONTROLLER_TO_RUNTIME_MESSAGES | RUNTIME_TO_CONTROLLER_MESSAGES):
         operations[name] = ServiceOperationDefinition()
+        model = _BODY_BY_RUNTIME_MESSAGE[name]
+        slug = re.sub(r"(?<!^)(?=[A-Z])", "-", model.__name__).lower()
+        schema_id = (
+            "https://kws.github.io/deckr/contract/v1/schemas/deckr/action-runtime/"
+            f"{slug}.v1.schema.json"
+        )
+        register_service_payload_validator(schema_id, model.model_validate)
+        schema = ServicePayloadSchema(schemaId=schema_id, schema={"$ref": schema_id})
         messages[name] = ServiceMessageDefinition(
             operation=name,
             intent=(
@@ -212,6 +223,8 @@ def action_runtime_service_protocol() -> ServiceProtocol:
                 if name in CONTROLLER_TO_RUNTIME_MESSAGES
                 else ServiceMessageDirection.SERVICE_TO_CONSUMER
             ),
+            eventSchema=schema if name in EVENT_MESSAGES else None,
+            paramsSchema=None if name in EVENT_MESSAGES else schema,
         )
     return ServiceProtocol(
         namespace=ACTION_RUNTIME_SERVICE_NAMESPACE,

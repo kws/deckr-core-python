@@ -284,6 +284,16 @@ payloads, and message conversion helpers. Action Runtime uses
 core `actions` lane. The controller owns live routing references and sends
 hardware output through a separate hardware claim.
 
+The Action Runtime declaration advertises the exact payload-schema references
+from the upstream catalogue. Importing the declaration registers its local
+Pydantic validators through `register_service_payload_validator`; generic service
+send/receive validation therefore resolves those exact references without reading
+the specification checkout or fetching schemas. Registration is for trusted local
+implementations, cannot replace an existing binding, and applies only to an exact
+`{"$ref": schemaId}` document. Other inline schemas still use local JSON Schema
+validation; unknown external references fail closed. The conformance script also
+compares the complete service declaration against the upstream catalogue.
+
 ## Managed hardware
 
 `Deckr.hardware(endpoint)` creates a `DeckrHardware` context for a controller

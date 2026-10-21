@@ -1,8 +1,27 @@
 """Select service payload schemas from the declared message and reply status."""
 
+from collections.abc import Callable
+from typing import Any
+
 from deckr.contracts.models import thaw_json
 from deckr.core.json_schema import local_validator
 from deckr.services.messages import ServiceMessageBody, ServiceMessageStatus
+
+_native_validators: dict[str, Callable[[Any], Any]] = {}
+
+
+def register_service_payload_validator(
+    schema_id: str, validator: Callable[[Any], Any]
+) -> None:
+    """Bind a trusted local model to an exact schema reference, without fetching it.
+
+    Domain declarations register their implementations at import time. Advertised
+    schemas cannot register validators or replace an existing implementation.
+    """
+    existing = _native_validators.get(schema_id)
+    if existing is not None and existing != validator:
+        raise ValueError(f"Service payload validator already registered: {schema_id}")
+    _native_validators[schema_id] = validator
 
 
 def validate_service_payloads(definition, body: ServiceMessageBody) -> None:
@@ -25,9 +44,12 @@ def validate_service_payloads(definition, body: ServiceMessageBody) -> None:
     for schema, payload in fields:
         if schema is not None:
             try:
-                local_validator(thaw_json(schema.json_schema)).validate(
-                    thaw_json(payload)
-                )
+                document = thaw_json(schema.json_schema)
+                native = _native_validators.get(schema.schema_id)
+                if native is not None and document == {"$ref": schema.schema_id}:
+                    native(thaw_json(payload))
+                else:
+                    local_validator(document).validate(thaw_json(payload))
             except Exception as exc:
                 raise ValueError(
                     f"Service payload does not match {schema.schema_id}"
