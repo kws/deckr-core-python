@@ -364,6 +364,15 @@ Routing, rendering, action bindings, persistence, and broader device-selection
 policy remain in the controller.
 
 The existing `hardware_manager(...)` factory remains the driver entry point.
+Hardware command handlers receive a `HardwareCommandContext`, with the validated
+`message` and `device`. Retain that context with queued work and call
+`context.authorize()` immediately before each device operation. Use
+`await context.run_sync(write, ...)` for blocking I/O: it rechecks authority in
+the worker thread after waiting for thread capacity. Cancellation, device
+replacement/removal, and manager shutdown permanently invalidate old work;
+a successor claim never authorizes an earlier command. Physical initialization
+and safe reset operations remain device-local behavior.
+
 `HardwareManagerRuntime.state`, `watch_state()`, and `wait_for_state(predicate)`
 now expose immutable inventory and live claims, discovery currentness,
 advertisement publication status, authority currentness, and structured failures.

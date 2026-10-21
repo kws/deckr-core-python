@@ -330,8 +330,8 @@ async def test_hardware_manager_context_cleanup_is_cancellation_safe() -> None:
 async def test_runtime_attaches_manager_token_and_routes_live_claim_input() -> None:
     delivered_commands = []
 
-    async def command_handler(message):
-        delivered_commands.append(message)
+    async def command_handler(context):
+        delivered_commands.append(context.message)
         return True
 
     deckr, endpoint_cm, runtime = await _runtime(command_handler=command_handler)
@@ -410,8 +410,8 @@ async def test_command_authorization_rejects_known_route_mismatch_without_reconc
 ) -> None:
     delivered_commands = []
 
-    async def command_handler(message):
-        delivered_commands.append(message)
+    async def command_handler(context):
+        delivered_commands.append(context.message)
         return True
 
     deckr, endpoint_cm, runtime = await _runtime(command_handler=command_handler)
@@ -468,8 +468,8 @@ async def test_command_authorization_rejects_known_route_mismatch_without_reconc
 async def test_start_subscription_and_stop_withdraw_beacon_and_authority() -> None:
     delivered_commands = []
 
-    async def command_handler(message):
-        delivered_commands.append(message)
+    async def command_handler(context):
+        delivered_commands.append(context.message)
         return True
 
     deckr, endpoint_cm, runtime = await _runtime(
@@ -983,8 +983,8 @@ async def test_hardware_admission_enforces_capacity_and_exact_participants(
 async def test_hardware_operations_validate_device_fingerprint(kind, fingerprint):
     delivered = []
 
-    async def command_handler(message):
-        delivered.append(message)
+    async def command_handler(context):
+        delivered.append(context.message)
         return True
 
     deckr, endpoint_cm, runtime = await _runtime(command_handler=command_handler)

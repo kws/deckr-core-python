@@ -38,9 +38,9 @@ from deckr.hardware.claims import (
     _HardwareResetHandler,
     logger,
 )
-from deckr.hardware.command_replies import reject_hardware_command
 from deckr.hardware.descriptors import CapabilityRef, DeviceDescriptor
 from deckr.hardware.manager_advertising import HardwareManagerAdvertising
+from deckr.hardware.manager_commands import HardwareManagerCommands
 from deckr.hardware.manager_state import HardwareManagerObserver
 from deckr.hardware.profiles import (
     HARDWARE_CLAIM_PROFILE_ID,
@@ -54,15 +54,13 @@ from deckr.hardware.state import (
 )
 from deckr.hardware.validation import (
     resolve_capability,
-    validate_command,
     validate_input,
-    validate_state_request,
     validate_value,
 )
 
 
 @dataclass(slots=True)
-class HardwareManagerRuntime(HardwareManagerAdvertising):
+class HardwareManagerRuntime(HardwareManagerAdvertising, HardwareManagerCommands):
     endpoint: _HardwareEndpoint
     beacon: Beacon
     concord: Concord
@@ -72,6 +70,7 @@ class HardwareManagerRuntime(HardwareManagerAdvertising):
     command_handler: _HardwareCommandHandler | None = None
     reset_handler: _HardwareResetHandler | None = None
     _devices: dict[str, DeviceDescriptor] = field(init=False, default_factory=dict)
+    _device_epochs: dict[str, object] = field(init=False, default_factory=dict)
     _advertiser: BeaconAdvertisementLease | None = field(init=False, default=None)
     _advertised_payload: JsonObject | None = field(init=False, default=None)
     _advertisement_dirty: bool = field(init=False, default=True)
@@ -97,6 +96,7 @@ class HardwareManagerRuntime(HardwareManagerAdvertising):
             raise ValueError("manager_id must match hardware_manager endpoint id")
         self._observer = HardwareManagerObserver(self)
         self._devices = dict(self.initial_devices or {})
+        self._device_epochs = {device_id: object() for device_id in self._devices}
         self._claim_manager = self.concord.participant(
             self.endpoint,
             ConcordParticipantPolicy(
@@ -134,6 +134,8 @@ class HardwareManagerRuntime(HardwareManagerAdvertising):
             previous, descriptor
         )
         self._devices[descriptor.device_id] = descriptor
+        if previous is None or replaced:
+            self._device_epochs[descriptor.device_id] = object()
         if replaced:
             self._claims_by_device.pop(descriptor.device_id, None)
             await self._cancel_claims_for_device(
@@ -154,6 +156,7 @@ class HardwareManagerRuntime(HardwareManagerAdvertising):
         reason: str = "removed",
     ) -> None:
         self._devices.pop(device_id, None)
+        self._device_epochs.pop(device_id, None)
         self._claims_by_device.pop(device_id, None)
         await self._cancel_claims_for_device(
             device_id,
@@ -235,6 +238,14 @@ class HardwareManagerRuntime(HardwareManagerAdvertising):
             )
         )
         self._devices = next_devices
+        self._device_epochs = {
+            device_id: (
+                self._device_epochs[device_id]
+                if device_id in previous and device_id not in replaced_device_ids
+                else object()
+            )
+            for device_id in next_devices
+        }
         for device_id in [*removed_device_ids, *replaced_device_ids]:
             self._claims_by_device.pop(device_id, None)
         for device_id in removed_device_ids:
@@ -311,127 +322,6 @@ class HardwareManagerRuntime(HardwareManagerAdvertising):
             },
         )
         return True
-
-    async def _command_subscription_loop(
-        self, *, task_status=anyio.TASK_STATUS_IGNORED
-    ) -> None:
-        started = False
-        try:
-            async with self.endpoint.subscribe(HARDWARE_MESSAGES_LANE) as stream:
-                task_status.started()
-                started = True
-                async for envelope in stream:
-                    await self._handle_command(envelope)
-        except Exception:
-            if not started:
-                raise
-            logger.exception("Hardware manager command subscription failed")
-        finally:
-            if started and not self._closed:
-                with anyio.CancelScope(shield=True):
-                    self._observer.failure = HardwareFailure(
-                        "hardware_subscription_closed",
-                        "Hardware command subscription closed",
-                    )
-                    await self.stop()
-
-    async def _handle_command(self, envelope: DeckrMessage) -> bool:
-        ref = hw_messages.hardware_device_ref_from_message(envelope)
-        if ref is None or ref.manager_id != self.manager_id:
-            return False
-        body = hw_messages.hardware_body_from_message(envelope)
-        if not isinstance(
-            body,
-            hw_messages.ControlCommandMessage
-            | hw_messages.CapabilityStateRequestMessage,
-        ):
-            return False
-        if not device_reference_matches(ref, self.endpoint.address, self._devices):
-            await reject_hardware_command(self.endpoint, envelope, body, reason="stale")
-            return False
-        claim = await self._command_claim(ref.device_id, envelope)
-        if claim is None:
-            await reject_hardware_command(
-                self.endpoint, envelope, body, reason="unauthorized"
-            )
-            return False
-        if envelope.sender_session_id != claim.controller_session_id:
-            await reject_hardware_command(self.endpoint, envelope, body, reason="stale")
-            return False
-        target = CapabilityRef(
-            deviceRef=body.device_ref,
-            controlId=body.control_id,
-            capabilityId=body.capability_id,
-        )
-        if envelope.subject != hw_messages.hardware_subject_for_capability(target):
-            await reject_hardware_command(
-                self.endpoint, envelope, body, reason="malformed"
-            )
-            return False
-        try:
-            capability = resolve_capability(self._devices, target)
-            if isinstance(body, hw_messages.ControlCommandMessage):
-                validate_command(capability, body.command_type, body.params)
-            else:
-                validate_state_request(capability)
-        except HardwareUnavailable as exc:
-            await reject_hardware_command(
-                self.endpoint,
-                envelope,
-                body,
-                reason=(
-                    "malformed"
-                    if exc.code == "invalid_capability_payload"
-                    else "unsupported"
-                ),
-            )
-            return False
-        if self.command_handler is None:
-            await reject_hardware_command(
-                self.endpoint, envelope, body, reason="unsupported"
-            )
-            return False
-        try:
-            handled = await self.command_handler(envelope)
-        except (anyio.BrokenResourceError, anyio.ClosedResourceError):
-            handled = False
-        if handled is None:
-            await reject_hardware_command(
-                self.endpoint, envelope, body, reason="unsupported"
-            )
-            return False
-        if not handled:
-            await reject_hardware_command(self.endpoint, envelope, body, reason="stale")
-            return False
-        return True
-
-    async def _command_claim(
-        self,
-        device_id: str,
-        envelope: DeckrMessage,
-    ) -> LiveHardwareClaim | None:
-        if self._closed:
-            return None
-        if envelope.contract is None:
-            return None
-        claim = self._claims_by_device.get(device_id)
-        if claim is None or envelope.sender != claim.controller_endpoint:
-            return None
-        if (
-            envelope.contract.contract_id != claim.contract.contract_id
-            or envelope.contract.generation != claim.contract.generation
-        ):
-            return None
-        return claim if self._claim_has_authority(claim) else None
-
-    def _claim_has_authority(self, claim: LiveHardwareClaim) -> bool:
-        managed = self._claim_manager.managed_contract(claim.contract)
-        return (
-            not self._closed
-            and managed is not None
-            and managed.local_authority
-            and managed.validity.valid
-        )
 
     async def _contract_event_loop(self) -> None:
         async with self._claim_manager.watch_state() as stream:

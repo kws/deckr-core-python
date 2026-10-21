@@ -38,6 +38,7 @@ from deckr.hardware.capabilities import (
 )
 from deckr.hardware.claim_spec import HardwareClaimSpec
 from deckr.hardware.client import DeckrHardware
+from deckr.hardware.command_context import HardwareCommandContext
 from deckr.hardware.descriptors import (
     BUTTON_ACTIVATION_EVENTS,
     BUTTON_MOMENTARY_EVENTS,
@@ -126,6 +127,7 @@ __all__ = [
     "HardwareCandidate",
     "HardwareClaimSpec",
     "HardwareClaimState",
+    "HardwareCommandContext",
     "HardwareDirectory",
     "HardwareDiscoveryState",
     "HardwareEvent",

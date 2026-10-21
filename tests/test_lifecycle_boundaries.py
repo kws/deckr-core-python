@@ -234,8 +234,8 @@ _APPROVED_OTHER_WATCH_BOUNDARIES = Counter[_WatchBoundary](
             "subscribe",
         ): 1,
         (
-            Path("src/deckr/hardware/manager.py"),
-            "HardwareManagerRuntime._command_subscription_loop",
+            Path("src/deckr/hardware/manager_commands.py"),
+            "HardwareManagerCommands._command_subscription_loop",
             "self.endpoint",
             "subscribe",
         ): 1,

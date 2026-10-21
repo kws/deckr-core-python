@@ -12,13 +12,14 @@ import anyio
 
 from deckr.concord import ContractHandle
 from deckr.contracts.messages import DeckrMessage, EndpointAddress, EntitySubject
+from deckr.hardware.command_context import HardwareCommandContext
 from deckr.hardware.descriptors import DeviceRef
 from deckr.hardware.profiles import HardwareClaimTerms
 
 logger = logging.getLogger(__name__)
 
 
-_HardwareCommandHandler = Callable[[DeckrMessage], Awaitable[bool | None]]
+_HardwareCommandHandler = Callable[[HardwareCommandContext], Awaitable[bool | None]]
 
 
 _HardwareResetHandler = Callable[[str], Awaitable[None]]

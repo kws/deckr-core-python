@@ -80,7 +80,9 @@ async def test_command_validates_scope_and_schema_before_publishing():
 async def test_state_reply_is_typed_and_checked_against_descriptor():
     async with hardware_setup() as h:
 
-        async def handle(message):
+        async def handle(context):
+            context.authorize()
+            message = context.message
             body = hw.hardware_body_from_message(message)
             reply = hw.CapabilityStateReplyMessage(
                 deviceRef=body.device_ref,
