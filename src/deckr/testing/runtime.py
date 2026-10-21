@@ -1,3 +1,8 @@
+"""In-memory runtime test harness with real managed Beacon and Concord.
+
+Lane sends are mocks; authority and retained KV state use the actual runtime.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -7,9 +12,9 @@ import anyio
 
 from deckr.contracts.lanes import MessageContract, MessageContractRegistry
 from deckr.contracts.messages import DeckrMessage
+from deckr.core.kv import KvBucketPolicy
 from deckr.runtime import Deckr
-from deckr.substrates.nats_kv import KvBucketPolicy
-from deckr.testing import MemoryJsonKvBucket
+from deckr.testing.kv import MemoryJsonKvBucket
 
 
 class MockSubscriptionContext:

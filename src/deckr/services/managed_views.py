@@ -13,6 +13,7 @@ from deckr.services.runtime import (
     ServiceViewRef,
     ServiceViewWriteContext,
 )
+from deckr.services.view_store import AuthorityCheck
 from deckr.services.views import (
     ManagedServiceViewAccess,
     ServiceViewEntry,
@@ -31,14 +32,22 @@ class _ServiceManagedServiceViewAccess(ManagedServiceViewAccess):
         store: ServiceViewStore,
         *,
         contract: ManagedServiceContract,
+        require_current: AuthorityCheck | None = None,
     ) -> None:
         super().__init__(store)
         self._contract = contract
+        self._require_current = require_current
+
+    async def _context(self):
+        context = await self._contract._context()
+        if self._require_current is not None:
+            await self._require_current()
+        return context
 
     async def read(self, view: ServiceViewRef) -> ServiceViewEntry | None:
-        context = await self._contract._context()
+        context = await self._context()
         return await self._store.get(
-            context.view_read_context(), view, require_authority=self._contract._context
+            context.view_read_context(), view, require_authority=self._context
         )
 
     @asynccontextmanager
@@ -48,13 +57,13 @@ class _ServiceManagedServiceViewAccess(ManagedServiceViewAccess):
     ) -> AsyncIterator[
         AsyncIterator[ServiceViewWatchSnapshot | ServiceViewWatchChange]
     ]:
-        context = await self._contract._context()
+        context = await self._context()
         async with self._store.watch(
-            context.view_read_context(), view, require_authority=self._contract._context
+            context.view_read_context(), view, require_authority=self._context
         ) as changes:
             yield guarded_changes(
                 changes,
-                check=self._contract._context,
+                check=self._context,
                 watch=self._contract._participant.watch_state,
             )
 
@@ -65,13 +74,13 @@ class _ServiceManagedServiceViewAccess(ManagedServiceViewAccess):
         *,
         ttl: float | None = None,
     ) -> ServiceViewEntry:
-        context = await self._contract._context()
+        context = await self._context()
         return await self._store.create(
             view=view,
             payload=payload,
             context=context.view_write_context(),
             ttl=ttl,
-            require_authority=self._contract._context,
+            require_authority=self._context,
         )
 
     async def put(
@@ -82,14 +91,14 @@ class _ServiceManagedServiceViewAccess(ManagedServiceViewAccess):
         revision: int | None = None,
         ttl: float | None = None,
     ) -> ServiceViewEntry:
-        context = await self._contract._context()
+        context = await self._context()
         return await self._store.put(
             view=view,
             payload=payload,
             context=context.view_write_context(),
             revision=revision,
             ttl=ttl,
-            require_authority=self._contract._context,
+            require_authority=self._context,
         )
 
     async def update(
@@ -100,14 +109,14 @@ class _ServiceManagedServiceViewAccess(ManagedServiceViewAccess):
         revision: int,
         ttl: float | None = None,
     ) -> ServiceViewEntry:
-        context = await self._contract._context()
+        context = await self._context()
         return await self._store.update(
             view=view,
             payload=payload,
             context=context.view_write_context(),
             revision=revision,
             ttl=ttl,
-            require_authority=self._contract._context,
+            require_authority=self._context,
         )
 
     async def delete(
@@ -116,12 +125,12 @@ class _ServiceManagedServiceViewAccess(ManagedServiceViewAccess):
         *,
         revision: int | None = None,
     ) -> None:
-        context = await self._contract._context()
+        context = await self._context()
         await self._store.delete(
             view=view,
             context=context.view_write_context(),
             revision=revision,
-            require_authority=self._contract._context,
+            require_authority=self._context,
         )
 
 

@@ -5,7 +5,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from message_bus_mocks import mock_deckr
 
 from deckr._authority_buckets import (
     CONCORD_CONTRACT_BUCKET_POLICY,
@@ -38,6 +37,7 @@ from deckr.concord_maintenance import (
 from deckr.concord_reaper import CONCORD_REAPER_COMPONENT_ID, component
 from deckr.contracts.messages import controller_address, hardware_manager_address
 from deckr.testing import ConcordMaintenanceHarness, MemoryJsonKvBucket
+from deckr.testing.runtime import mock_deckr
 
 PROFILE = "com.example.reaper_test.v1"
 

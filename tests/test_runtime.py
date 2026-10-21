@@ -4,7 +4,6 @@ from inspect import signature
 
 import anyio
 import pytest
-from message_bus_mocks import mock_deckr
 
 from deckr.beacon import DEFAULT_BEACON_ADVERTISEMENT_STORE_NAME
 from deckr.concord import (
@@ -22,6 +21,7 @@ from deckr.contracts.messages import SERVICES_LANE
 from deckr.runtime import Deckr
 from deckr.substrates.nats import NatsSubstrate
 from deckr.substrates.supervised_nats import SupervisedNatsSubstrate
+from deckr.testing.runtime import mock_deckr
 
 
 class _ClosableMessageBus:

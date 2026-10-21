@@ -208,6 +208,17 @@ class ServiceProvider:
             name=name,
         )
 
+    async def serve(self, handler, *, timeout_seconds=8.0, max_concurrency=32) -> None:
+        """Run bounded, guarded requests through the managed provider boundary."""
+        from deckr.services.provider_requests import serve_requests
+
+        await serve_requests(
+            self,
+            handler,
+            timeout_seconds=timeout_seconds,
+            max_concurrency=max_concurrency,
+        )
+
     def contract(
         self,
         pointer: ContractHandle | ContractPointer,

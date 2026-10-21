@@ -21,10 +21,17 @@ from deckr.services.messages import (
     service_body_for_type,
     service_message,
     service_message_schema,
+    service_reply,
     service_response_message,
 )
-from deckr.services.payload_validation import register_service_payload_validator
+from deckr.services.payload_validation import (
+    model_payload_schema,
+    register_service_payload_validator,
+)
 from deckr.services.provider import ServiceProvider, ServiceProviderRequest
+from deckr.services.provider_requests import ServiceRequestContext
+from deckr.services.provider_resources import ServiceResourceRegistry
+from deckr.services.resource_client import ResourceServiceClient, ServiceResourceSession
 from deckr.services.runtime import (
     AuthorizedServiceMessage,
     ServiceAdvertisementPayload,
@@ -71,7 +78,13 @@ from deckr.services.views import (
 )
 
 __all__ = [
+    "ResourceServiceClient",
+    "ServiceResourceSession",
+    "ServiceRequestContext",
+    "ServiceResourceRegistry",
+    "service_reply",
     "register_service_payload_validator",
+    "model_payload_schema",
     "SERVICE_MESSAGE",
     "SERVICE_LANE_CONTRACT",
     "AuthorizedServiceMessage",

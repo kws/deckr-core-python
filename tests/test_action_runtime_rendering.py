@@ -3,7 +3,6 @@
 import json
 
 import pytest
-from message_bus_mocks import mock_deckr
 
 from deckr.action_runtime import action_runtime_payload, validate_action_runtime_message
 from deckr.actions.rendering import (
@@ -17,6 +16,7 @@ from deckr.contracts.messages import (
     endpoint_target,
     entity_subject,
 )
+from deckr.testing.runtime import mock_deckr
 
 TARGET = {"kind": "binding", "bindingId": "binding", "generation": 2}
 

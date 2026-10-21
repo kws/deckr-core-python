@@ -39,6 +39,14 @@ class _TemporaryBoundary:
 # Keeping exact semantic call sites here makes accidental replacement with an
 # unbounded registry or queue visible in the same audit as temporary debt.
 _PERMANENT_BOUNDED_BOUNDARIES: dict[_Boundary, int] = {
+    # Provider scopes are bounded by max_scopes/max_resources_per_scope; empty
+    # scopes are removed and invalid contracts are reconciled from current state.
+    (
+        Path("src/deckr/services/provider_resources.py"),
+        "ServiceResourceRegistry.__init__",
+        "self._scopes",
+        "task_or_reply_route_map",
+    ): 1,
     # At most 256 runtime clients; routers are shared per endpoint and removed
     # when their last client exits. Endpoint admission caps claims (including
     # pending negotiations) at 64. Each active consumer has a finite event FIFO;

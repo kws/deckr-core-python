@@ -5,7 +5,6 @@ from pathlib import Path
 
 import anyio
 import pytest
-from message_bus_mocks import mock_deckr
 
 from deckr.components import (
     BaseComponent,
@@ -27,6 +26,7 @@ from deckr.lanes import Lane
 from deckr.launcher import build_runtime_substrate
 from deckr.substrates.nats import NatsSubstrate
 from deckr.substrates.nats_kv import KvBucketPolicy
+from deckr.testing.runtime import mock_deckr
 
 
 class _DummyComponent(BaseComponent):

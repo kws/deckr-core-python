@@ -31,6 +31,7 @@ from deckr.services.runtime import (
     ServiceUnavailable,
     service_managed_contract_context,
 )
+from deckr.services.view_store import AuthorityCheck
 from deckr.services.views import ManagedServiceViewAccess, ServiceViewStore
 
 
@@ -148,10 +149,13 @@ class ManagedServiceContract:
             },
         )
 
-    def view_access(self, store: ServiceViewStore) -> ManagedServiceViewAccess:
+    def view_access(
+        self, store: ServiceViewStore, *, require_current: AuthorityCheck | None = None
+    ) -> ManagedServiceViewAccess:
         return _ServiceManagedServiceViewAccess(
             store,
             contract=self,
+            require_current=require_current,
         )
 
     async def _context(self) -> ServiceManagedContractContext:

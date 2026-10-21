@@ -13,6 +13,18 @@ _WatchBoundary = tuple[Path, str, str, str]
 # than silently evading a receiver-name pattern.
 _APPROVED_AUTHORITY_STATE_BOUNDARIES: dict[_WatchBoundary, str] = {
     (
+        Path("src/deckr/services/provider_requests.py"),
+        "ServiceRequestContext._monitor",
+        "self.provider",
+        "watch_state",
+    ): "Bounded request worker cancellation on loss of live provider agreement",
+    (
+        Path("src/deckr/services/provider_resources.py"),
+        "ServiceResourceRegistry._watch_authority",
+        "self.provider",
+        "watch_state",
+    ): "Provider-owned registry reconciles retained scopes against current agreements",
+    (
         Path("src/deckr/hardware/_state.py"),
         "HardwareStateChannel.watch",
         "self._bus",

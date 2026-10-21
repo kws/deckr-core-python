@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from message_bus_mocks import mock_deckr
 from test_service_provider import (
     CONSUMER,
     SERVICE,
@@ -26,6 +25,7 @@ from deckr.services import (
 )
 from deckr.services.messages import service_response_message
 from deckr.services.payload_validation import validate_service_payloads
+from deckr.testing.runtime import mock_deckr
 
 
 def _schema(field, kind):

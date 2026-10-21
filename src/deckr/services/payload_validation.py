@@ -60,3 +60,11 @@ def validated_service_body(definition, **fields):
     body = ServiceMessageBody(**fields)
     validate_service_payloads(definition, body)
     return body.to_dict()
+
+
+def model_payload_schema(schema_id: str, model):
+    """Declare an exact reference implemented by a local, conforming wire model."""
+    from deckr.services.protocol import ServicePayloadSchema
+
+    register_service_payload_validator(schema_id, model.model_validate)
+    return ServicePayloadSchema(schemaId=schema_id, schema={"$ref": schema_id})

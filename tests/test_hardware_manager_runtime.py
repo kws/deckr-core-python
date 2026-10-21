@@ -3,7 +3,6 @@ from __future__ import annotations
 import anyio
 import pytest
 from descriptor_fixtures import stream_deck_bitmap_grid
-from message_bus_mocks import mock_deckr
 
 import deckr.hardware.messages as hw_messages
 from deckr.beacon import (
@@ -31,6 +30,7 @@ from deckr.hardware import (
     HardwareManagerRuntime,
 )
 from deckr.testing import ConcordRuntimeHarness
+from deckr.testing.runtime import mock_deckr
 
 pytestmark = pytest.mark.asyncio
 

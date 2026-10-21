@@ -456,3 +456,54 @@ independent of the reference contract bundle version.
 
 The stable tag should always point at the stable release commit, not the later
 `.dev0` commit.
+
+## Provider requests and retained resources
+
+`await provider.serve(handler, timeout_seconds=8, max_concurrency=32)` applies
+backpressure before creating request workers. The handler receives a
+`ServiceRequestContext` with the original message and authorization. Its `reply`
+method preserves protocol metadata; the dispatcher validates result/error payloads.
+A handler returning an invalid result produces `invalid_service_reply`, not an
+unvalidated success. Timeouts return `service_command_timeout`.
+
+The context monitors live provider authority and cancels suspended work on loss.
+`check()` also verifies expiry and any resource constraints at dispatch. Use
+`guarded_call` for asynchronous backend dispatch and `guarded_run_sync` for blocking
+adapters; the latter checks inside the worker after thread-capacity waits. Adapters
+that perform several external operations must call `check_operation()` again
+between effects. Guards never recreate or transfer agreement authority. Cancelling
+an already dispatched external operation only abandons its result; do not replay it.
+
+`ServiceResourceRegistry` owns full-replacement scopes by contract, consumer
+endpoint/session, and subscriber. Call `replace(request, subscriber, resources)` for
+scope changes and `require_resource(request, subscriber, resource)` before commands.
+Start it under the service task group. Its `on_change` callback reconciles the
+current `resources` union outside request contexts and retries backend failures.
+Backend availability changes projections, not Concord lifetime.
+
+`publish(resource, payload)` uses live managed view access and orders writes with
+scope removal. Its optional `is_current` predicate rejects stale backend snapshots,
+including after a KV readiness wait. `invalidate(resource)` removes projections
+without clearing retained intent. Cleanup uses exact owned fences and revisions,
+reconciles actual owned scopes against current authority, and retries failures.
+A scope mutation that fails after changing local state retires the agreement.
+The default limits are 256 subscriber scopes and 1,024 resources per scope; empty
+scopes release their entries. Close the registry before closing its view store and
+provider, and ensure all component cleanup runs even if one close fails.
+
+`ResourceServiceClient` configures a `SharedResourceSubscriptionManager` with domain
+operation, parameter and view-family names. `subscription_session` yields a
+`ServiceResourceSession` with `messages`, `set(resources)`, `command(...)` and
+`aclose()`. Its shared-manager key includes namespace, service, family, scope
+operation and parameter, subscriber identity, request timeout and negotiation
+timeout. Domain adapters supply declarations rather than duplicate lifecycle code.
+
+`AsyncSingleFlight` shares concurrent read-only lookups by key. It does not cache
+results or share command authority. Cancellation removes the pending entry under
+a shield and wakes waiters with `SharedOperationCancelled`; later calls may retry.
+`model_payload_schema` binds a native model to an exact reference schema ID.
+Reference fixtures remain external and must test native model conformance.
+
+For implementation tests, `deckr.testing.runtime.mock_deckr` provides real managed
+Beacon/Concord over in-memory KV with mocked lane delivery. `ServiceAuthorityStub`
+is only for isolated handler tests; it must not substitute for Concord regressions.

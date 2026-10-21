@@ -2,11 +2,11 @@
 
 import anyio
 import pytest
-from message_bus_mocks import mock_deckr
 from test_service_protocol_example import EXAMPLE_PROTOCOL
 
 from deckr.concord import ConcordUnavailable, ConcordUnavailableCode
 from deckr.services import ServiceUnavailable, ServiceViewRef, service_view_key
+from deckr.testing.runtime import mock_deckr
 
 
 @pytest.mark.asyncio

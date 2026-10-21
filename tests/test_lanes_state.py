@@ -10,7 +10,6 @@ from urllib.parse import urlparse
 
 import anyio
 import pytest
-from message_bus_mocks import mock_deckr, mock_message_bus
 
 from deckr.actions.endpoints import (
     action_provider_address,
@@ -42,6 +41,7 @@ from deckr.substrates.nats import (
     _subject_for,
 )
 from deckr.substrates.nats_kv import KvBucketPolicy
+from deckr.testing.runtime import mock_deckr, mock_message_bus
 
 _CONTRACT = {"contractId": "contract-1", "generation": 1}
 

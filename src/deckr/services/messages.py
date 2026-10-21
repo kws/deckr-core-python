@@ -136,6 +136,31 @@ SERVICE_BODY_BY_MESSAGE_TYPE: Mapping[str, type[ServiceMessageBody]] = {
 }
 
 
+def service_reply(
+    request: ServiceMessageBody,
+    *,
+    status: ServiceMessageStatus = ServiceMessageStatus.OK,
+    result: Mapping[str, Any] | None = None,
+    code: str | None = None,
+    message: str | None = None,
+    diagnostics: Mapping[str, Any] | None = None,
+) -> ServiceMessageBody:
+    """Preserve declared message metadata when constructing a service reply."""
+    return ServiceMessageBody(
+        serviceNamespace=request.service_namespace,
+        name=request.name,
+        intent=request.intent,
+        exchangePattern=request.exchange_pattern,
+        status=status,
+        result=dict(result or {}) if status == ServiceMessageStatus.OK else None,
+        error=ServiceError(
+            code=code, message=message, diagnostics=dict(diagnostics or {})
+        )
+        if code is not None and message is not None
+        else None,
+    )
+
+
 def _target(
     recipient: str | EndpointAddress | MessageTarget,
 ) -> MessageTarget:

@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock
 
 import anyio
 import pytest
-from message_bus_mocks import mock_deckr
 
 from deckr.actions.endpoints import action_provider_address
 from deckr.beacon import DEFAULT_BEACON_ADVERTISEMENT_STORE_NAME
@@ -37,6 +36,7 @@ from deckr.services import (
 )
 from deckr.services.messages import service_message
 from deckr.substrates.nats_kv import KvUnavailable
+from deckr.testing.runtime import mock_deckr
 
 pytestmark = pytest.mark.asyncio
 

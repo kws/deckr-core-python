@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 import anyio
 from descriptor_fixtures import stream_deck_bitmap_grid
-from message_bus_mocks import MockSubscriptionContext, mock_deckr
 
 from deckr.hardware import (
     CapabilityRef,
@@ -15,6 +14,7 @@ from deckr.hardware import (
     messages as hw,
 )
 from deckr.lanes import reply_is_accepted
+from deckr.testing.runtime import MockSubscriptionContext, mock_deckr
 
 
 def descriptor(device_id="device-a"):
