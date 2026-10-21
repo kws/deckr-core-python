@@ -49,7 +49,8 @@ from the reference repository at the revision recorded in
 
 ## Specification dependency
 
-The core targets the `1.0.0-alpha.3` Action Runtime contract.
+The core targets the alpha Action Runtime contract at the Git revision in
+[.deckr-spec-revision](.deckr-spec-revision).
 Page commands require explicit `BindingCommandTarget` or
 `PageSessionCommandTarget` values from `deckr.actions.messages`; `close_page`
 uses `ClosePageBody`, and page-session metadata requires `generation`.
