@@ -28,6 +28,8 @@ class NatsKvWatch(anyio.abc.ObjectReceiveStream[KvChange | KvWatchBarrier]):
     def __init__(
         self, *, js: Any, bucket: str, prefix: str, revision: int, buffer_size: int
     ) -> None:
+        if buffer_size < 1:
+            raise ValueError("NATS KV watch buffer_size must be positive")
         self._js = js
         self._connection = js._nc
         self._bucket = bucket
@@ -36,9 +38,11 @@ class NatsKvWatch(anyio.abc.ObjectReceiveStream[KvChange | KvWatchBarrier]):
         self._consumer = f"kv_watch_{uuid.uuid4().hex}"
         self._subject_prefix = f"$KV.{bucket}."
         self._barrier = KvWatchBarrier(revision)
+        self._buffer_size = buffer_size
+        self._acknowledgements: dict[int, Any] = {}
         self._send, self._receive = anyio.create_memory_object_stream[
             KvChange | KvWatchBarrier
-        ](buffer_size)
+        ](buffer_size + 1)  # Reserve one slot for the snapshot barrier.
         self._subscription: Any = None
         self._closed = False
         self._failure: KvUnavailable | None = None
@@ -53,7 +57,9 @@ class NatsKvWatch(anyio.abc.ObjectReceiveStream[KvChange | KvWatchBarrier]):
 
         inbox = self._connection.new_inbox()
         self._subscription = await self._connection.subscribe(
-            inbox, cb=self._on_message, pending_msgs_limit=1024
+            inbox,
+            cb=self._on_message,
+            pending_msgs_limit=self._buffer_size + 16,
         )
         pattern = self._prefix + ">" if self._prefix else ">"
         config = ConsumerConfig(
@@ -61,7 +67,11 @@ class NatsKvWatch(anyio.abc.ObjectReceiveStream[KvChange | KvWatchBarrier]):
             deliver_subject=inbox,
             filter_subject=self._subject_prefix + pattern,
             deliver_policy=DeliverPolicy.LAST_PER_SUBJECT,
-            ack_policy=AckPolicy.NONE,
+            # Bound replay at the broker, not just in the local queues. An
+            # unacknowledged push consumer can overflow on every retry when a
+            # snapshot is larger than those queues.
+            ack_policy=AckPolicy.EXPLICIT,
+            max_ack_pending=self._buffer_size,
             idle_heartbeat=HEARTBEAT_INTERVAL_SECONDS,
             flow_control=True,
             inactive_threshold=5.0,
@@ -139,6 +149,7 @@ class NatsKvWatch(anyio.abc.ObjectReceiveStream[KvChange | KvWatchBarrier]):
                     message.data,
                 )
                 change = KvChange(self._bucket, key, entry.revision, "put", entry)
+            self._acknowledgements[change.revision] = message
             self._enqueue(change)
             if metadata.num_pending == 0:
                 self._finish_snapshot()
@@ -176,12 +187,29 @@ class NatsKvWatch(anyio.abc.ObjectReceiveStream[KvChange | KvWatchBarrier]):
                 except KvUnavailable as exc:
                     self._failure = exc
                     raise
+                if isinstance(value, KvChange):
+                    message = self._acknowledgements.pop(value.revision, None)
+                    if message is not None:
+                        try:
+                            await message.ack()
+                            self._check_health()
+                        except BaseException as exc:
+                            # A cancelled acknowledgement has already removed
+                            # this event from the queue. Never let a later read
+                            # silently continue past that undelivered event.
+                            self._failure = KvUnavailable(
+                                "Could not acknowledge NATS KV watch delivery"
+                            )
+                            if isinstance(exc, Exception):
+                                raise self._failure from exc
+                            raise
                 return value
 
     async def aclose(self) -> None:
         if self._closed:
             return
         self._closed = True
+        self._acknowledgements.clear()
         await self._send.aclose()
         await self._receive.aclose()
         with anyio.move_on_after(CLEANUP_TIMEOUT_SECONDS, shield=True):

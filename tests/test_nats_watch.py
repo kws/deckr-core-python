@@ -31,13 +31,17 @@ class Connection:
 
 
 class JetStream:
-    def __init__(self):
+    def __init__(self, *, pending=0):
         self._nc = Connection()
         self.deleted = []
+        self.pending = pending
 
     async def add_consumer(self, stream, *, config):
+        self.config = config
         self.consumer = config.name
-        return SimpleNamespace(num_pending=0, delivered=SimpleNamespace(consumer_seq=0))
+        return SimpleNamespace(
+            num_pending=self.pending, delivered=SimpleNamespace(consumer_seq=0)
+        )
 
     async def delete_consumer(self, stream, consumer):
         self.deleted.append((stream, consumer))
@@ -119,6 +123,64 @@ async def test_flow_control_is_acknowledged():
     try:
         await js._nc.callback(SimpleNamespace(headers={"Status": "100"}, reply="flow"))
         assert js._nc.replies == ["flow"]
+    finally:
+        await stream.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["success", "error", "cancelled", "disconnect"])
+async def test_delivery_is_acknowledged_only_when_reader_releases_capacity(outcome):
+    js = JetStream(pending=1)
+    stream = NatsKvWatch(js=js, bucket="test", prefix="", revision=1, buffer_size=1)
+    acknowledgements = []
+
+    async def acknowledge():
+        acknowledgements.append(1)
+        if outcome == "error":
+            raise OSError("acknowledgement failed")
+        if outcome == "cancelled":
+            scope.cancel()
+            await anyio.sleep(0)
+        if outcome == "disconnect":
+            js._nc.is_connected = False
+
+    try:
+        await stream.start()
+        assert js.config.ack_policy == "explicit"
+        assert js.config.max_ack_pending == 1
+        # Start with a nonempty replay. Its final delivery and barrier must fit
+        # even when the reader has not started yet.
+        await js._nc.callback(
+            SimpleNamespace(
+                headers={},
+                subject="$KV.test.key",
+                data=b'{"value": 1}',
+                metadata=SimpleNamespace(
+                    consumer=js.consumer,
+                    sequence=SimpleNamespace(consumer=1, stream=1),
+                    num_pending=0,
+                ),
+                ack=acknowledge,
+            )
+        )
+        assert acknowledgements == []
+        if outcome == "success":
+            change = await stream.receive()
+            assert change.entry.value == {"value": 1}
+            assert await stream.receive() == KvWatchBarrier(1)
+        elif outcome == "cancelled":
+            with anyio.CancelScope() as scope:
+                await stream.receive()
+            assert scope.cancelled_caught
+        else:
+            with pytest.raises(KvUnavailable, match="acknowledge"):
+                await stream.receive()
+        assert acknowledgements == [1]
+        if outcome != "success":
+            # Even a cancelled reader must force a fresh snapshot, rather than
+            # allowing the next read to skip a lost event and expose a barrier.
+            with pytest.raises(KvUnavailable, match="acknowledge"):
+                await stream.receive()
     finally:
         await stream.aclose()
 

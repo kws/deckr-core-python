@@ -254,6 +254,12 @@ Explicit lists read values from one owned snapshot consumer and delete it before
 returning, including cancellation cleanup. They do not list keys and then fetch
 every value separately.
 
+KV watches bound outstanding broker deliveries to their configured buffer size
+and acknowledge each record when the reader consumes it. Large initial snapshots
+and slow readers therefore drain through a bounded window. A separate slot holds
+the snapshot barrier; connection, heartbeat, and sequence failures still end the
+watch and require an explicitly observed recovery.
+
 With the reference and three implementations checked out as siblings,
 [`deckr-integration-tests`](https://github.com/kws/deckr-integration-tests)
 uses public managed service APIs for its Compose smoke and recovery workloads.

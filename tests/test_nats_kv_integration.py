@@ -112,6 +112,38 @@ async def test_lists_delete_consumers_and_bad_json_does_not_break_shared_watch(
 
 
 @pytest.mark.asyncio
+async def test_large_replay_and_slow_reader_use_bounded_broker_backpressure(tmp_path):
+    async with _broker(tmp_path) as js:
+        bucket = NatsJsonKvBucket(
+            js=js,
+            policy=KvBucketPolicy(bucket="large_replay", ttl_seconds=None),
+            buffer_size=8,
+        )
+        entries = [
+            await bucket.put(f"items.{index}", {"value": index})
+            for index in range(2048)
+        ]
+        async with bucket.watch("items.") as changes:
+            # Leave the reader idle beyond several heartbeats. Replay must stop
+            # at the configured window, without losing data or continuity.
+            await anyio.sleep(2)
+            info = await js.consumer_info("KV_large_replay", changes._consumer)
+            assert info.num_ack_pending == 8
+            assert info.delivered.consumer_seq == 8
+            with anyio.fail_after(10):
+                observed = []
+                async for change in changes:
+                    if isinstance(change, KvWatchBarrier):
+                        assert change.revision == entries[-1].revision
+                        break
+                    observed.append(change.entry)
+                assert observed == entries
+                latest = await bucket.put("items.live", {"value": "live"})
+                assert (await anext(changes)).entry == latest
+        assert (await js.stream_info("KV_large_replay")).state.consumer_count == 0
+
+
+@pytest.mark.asyncio
 async def test_broker_policy_adjustment_is_rejected_instead_of_silently_accepted(
     tmp_path,
 ):

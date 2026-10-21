@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import anyio
 import pytest
@@ -1055,6 +1056,7 @@ class _FakeJs:
                 reply="",
                 data=entry.value,
                 subject=f"$KV.{self.bucket}.{entry.key}",
+                ack=AsyncMock(),
                 metadata=SimpleNamespace(
                     consumer=config.name,
                     sequence=SimpleNamespace(consumer=index + 1, stream=entry.revision),
