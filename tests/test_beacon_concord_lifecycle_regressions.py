@@ -860,7 +860,7 @@ async def test_beacon_lease_recreates_missing_advertisement_key() -> None:
 
 
 @pytest.mark.asyncio
-async def test_beacon_advertise_cleans_stale_same_endpoint_by_default() -> None:
+async def test_beacon_advertise_preserves_competing_session_without_exit_evidence() -> None:
     raw = MemoryJsonKvBucket(bucket="beacon", ttl_seconds=300)
 
     async with _running_beacon(raw) as beacon:
@@ -883,14 +883,15 @@ async def test_beacon_advertise_cleans_stale_same_endpoint_by_default() -> None:
         fresh_handle = fresh._handle  # noqa: SLF001
         assert fresh_handle is not None
 
-        assert stale.closed
-        assert await raw.get(stale_handle.key) is None
+        assert not stale.closed
+        assert await raw.get(stale_handle.key) is not None
         assert await raw.get(fresh_handle.key) is not None
-        assert [
+        assert {
             candidate.advertisement.session_id
             for candidate in beacon.candidates("dev.deckr.test.feature.v1")
-        ] == ["new-session"]
+        } == {"old-session", "new-session"}
         await fresh.aclose()
+        await stale.aclose()
 
 
 @pytest.mark.asyncio

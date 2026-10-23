@@ -267,6 +267,20 @@ Its [native Concord runner](https://github.com/kws/deckr-integration-tests#nativ
 uses `scripts/interop_peer.py` for concurrent startup, attachment, numeric terms,
 automatic renewal, broker loss, and recovery across languages.
 
+A supervised restart can avoid waiting for token expiry. Load an authenticated
+[restart handoff](https://github.com/kws/deckr/blob/main/docs/deckr-deployment.md#verified-restart-handoff)
+with `deckr.core.restart.restart_handoff_from_env()` and pass it as
+`Deckr(restart=proof)` (or `Concord(..., restart=proof)` for protocol-only hosts).
+The configured launcher reads `DECKR_RESTART_HANDOFF` and `DECKR_INSTANCE_ID`.
+It confirms cancellation of predecessor participation, including consumer-created
+contracts, before yielding replacement endpoints. `Deckr.endpoint_sessions`
+provides process-local session diagnostics for the supervisor; it is not an
+authority query. A host owns at most 256 simultaneous endpoint contexts, and
+closed contexts are removed from this diagnostic registry. Beacon cleanup removes only proven exited sessions. Other live
+sessions remain intact, and replacement endpoints always need fresh sessions.
+The supervisor retains unresolved predecessor entries across repeated crashes.
+Without confirmed exit evidence, normal token validity and contention apply.
+
 ## Services and Action Runtime
 
 `Deckr.services(endpoint)` creates a `DeckrServices` context. Use `use_matching()`

@@ -37,6 +37,7 @@ from deckr._concord._validation import ConcordSessionAssertions
 from deckr._concord._view import ConcordView
 from deckr.core.identity import ContractPointer, EndpointAddress, parse_endpoint_address
 from deckr.core.kv_source import KvMaterializedSource
+from deckr.core.restart import VerifiedRestart
 from deckr.core.wire import WireModel
 
 
@@ -47,6 +48,8 @@ class Concord:
         self,
         contract_bucket: KvMaterializedSource | Any,
         token_bucket: KvMaterializedSource | Any,
+        *,
+        restart: VerifiedRestart | None = None,
     ) -> None:
         self._repository = _ConcordRepository(
             contract_bucket,
@@ -59,6 +62,7 @@ class Concord:
         self._owner_bootstrap = ConcordOwnerBootstrap(
             self._repository,
             self._view,
+            restart=restart,
         )
         self._started = False
         self._closed = False
@@ -128,6 +132,7 @@ class Concord:
             endpoint,
             policy,
             self._task_group,
+            self._owner_bootstrap,
         )
 
     async def bootstrap_owner(self, endpoint: ConcordEndpointSession) -> None:

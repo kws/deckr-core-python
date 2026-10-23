@@ -17,6 +17,7 @@ from deckr._concord._models import (
     ContractHandle,
     ContractState,
 )
+from deckr._concord._owner import ConcordOwnerBootstrap
 from deckr._concord._participant_attachments import ParticipantAttachments
 from deckr._concord._participant_models import (
     ConcordManagedContract,
@@ -45,7 +46,9 @@ class ConcordParticipant:
         endpoint: ConcordEndpointSession,
         policy: ConcordParticipantPolicy,
         task_group: anyio.abc.TaskGroup | None,
+        bootstrap: ConcordOwnerBootstrap,
     ) -> None:
+        self._bootstrap = bootstrap
         self._resources = ParticipantResources()
         self._store = store
         self._view = view
@@ -130,6 +133,8 @@ class ConcordParticipant:
         raise anyio.ClosedResourceError
 
     async def _enter(self) -> ConcordParticipant:
+        with anyio.fail_after(5):
+            await self._bootstrap.bootstrap(self.participant, self.session_id)
         await self._view.wait_current()
         if self._resources.closed:
             raise anyio.ClosedResourceError

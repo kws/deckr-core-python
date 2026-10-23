@@ -22,6 +22,7 @@ from deckr.concord_maintenance import ConcordMaintenance
 from deckr.contracts.authority import ContractPointer
 from deckr.core.kv import KvChange, KvEntry, KvMaterializedSnapshot, KvWatchBarrier
 from deckr.core.kv_source import KvMaterializedSource
+from deckr.core.restart import VerifiedRestart
 from deckr.testing.kv import MemoryJsonKvBucket
 
 
@@ -47,6 +48,7 @@ class ConcordRuntimeHarness:
         contract_store: Any | None = None,
         token_store: Any | None = None,
         token_ttl_seconds: float = 120,
+        restart: VerifiedRestart | None = None,
     ) -> None:
         self.contract_store = contract_store or MemoryJsonKvBucket(
             bucket=DEFAULT_CONCORD_CONTRACT_BUCKET_NAME
@@ -60,6 +62,7 @@ class ConcordRuntimeHarness:
         self.concord = Concord(
             self._contract_view,
             self._token_view,
+            restart=restart,
         )
 
     async def seed_contract(self, record: ContractRecord) -> ContractHandle:

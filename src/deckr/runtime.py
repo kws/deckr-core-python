@@ -28,6 +28,8 @@ from deckr.concord import (
     CONCORD_CONTRACT_BUCKET_POLICY,
     CONCORD_TOKEN_BUCKET_POLICY,
     Concord,
+    ConcordConflict,
+    ConcordUnavailable,
 )
 from deckr.contracts.lanes import (
     CORE_LANE_CONTRACTS,
@@ -35,7 +37,8 @@ from deckr.contracts.lanes import (
     MessageContractRegistry,
 )
 from deckr.contracts.messages import CORE_LANE_NAMES, SERVICES_LANE, EndpointAddress
-from deckr.core.kv import JsonKvBucket, KvBucketPolicy
+from deckr.core.kv import JsonKvBucket, KvBucketPolicy, KvConflict, KvUnavailable
+from deckr.core.restart import VerifiedRestart
 from deckr.lanes import (
     EndpointSession,
     Lane,
@@ -52,7 +55,10 @@ class Deckr:
         lane_contracts: MessageContractRegistry | Sequence[MessageContract] = (),
         lanes: Sequence[str] = (),
         message_bus: MessageBus | None = None,
+        restart: VerifiedRestart | None = None,
     ) -> None:
+        self._restart = restart
+        self._endpoint_sessions: dict[int, EndpointSession] = {}
         self._lane_contracts = self._build_lane_contracts(
             lane_contracts,
             lanes=lanes,
@@ -87,6 +93,11 @@ class Deckr:
     def lane(self, name: str) -> Lane:
         return self._lanes.require(name)
 
+    @property
+    def endpoint_sessions(self) -> tuple[EndpointSession, ...]:
+        """Process-local sessions for supervisor diagnostics; not authority."""
+        return tuple(self._endpoint_sessions.values())
+
     @asynccontextmanager
     async def endpoint(
         self,
@@ -95,15 +106,38 @@ class Deckr:
         session_id: str | None = None,
         metadata: Mapping[str, str] | None = None,
     ) -> AsyncIterator[EndpointSession]:
+        if len(self._endpoint_sessions) >= 256:
+            raise RuntimeError("Deckr endpoint session limit reached")
         session = endpoint_session(
             address=address,
             session_id=session_id,
             metadata=metadata,
             message_bus=self._message_bus,
         )
+        self._endpoint_sessions[id(session)] = session
         try:
+            if self._restart is not None:
+                delay = 0.1
+                while True:
+                    try:
+                        with anyio.fail_after(5):
+                            await self.concord.bootstrap_owner(session)
+                            await self.beacon.cleanup_restart(
+                                self._restart, session.address
+                            )
+                        break
+                    except (
+                        TimeoutError,
+                        ConcordUnavailable,
+                        ConcordConflict,
+                        KvUnavailable,
+                        KvConflict,
+                    ):
+                        await anyio.sleep(delay)
+                        delay = min(delay * 2, 5)
             yield session
         finally:
+            self._endpoint_sessions.pop(id(session), None)
             await session.aclose()
 
     @property
@@ -251,6 +285,7 @@ class Deckr:
             self._concord = Concord(
                 kv_bucket(CONCORD_CONTRACT_BUCKET_POLICY),
                 kv_bucket(CONCORD_TOKEN_BUCKET_POLICY),
+                restart=self._restart,
             )
             self._concord.start(self._task_group)
         return self

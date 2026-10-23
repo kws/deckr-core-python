@@ -44,6 +44,7 @@ from deckr._beacon._view import BeaconView
 from deckr.core.identity import EndpointAddress
 from deckr.core.kv import KvConflict, KvEntry, KvUnavailable
 from deckr.core.kv_source import KvMaterializedSource
+from deckr.core.restart import VerifiedRestart
 
 
 class Beacon:
@@ -245,6 +246,7 @@ class Beacon:
                 for lease in self._leases
                 if lease.feature_id == spec.feature_id
                 and lease.endpoint == endpoint.address
+                and lease.session_id == endpoint.session_id
             )
         for lease in local_stale:
             await lease.aclose()
@@ -252,9 +254,31 @@ class Beacon:
         for candidate in self._view.candidates_for_endpoint(
             (spec.feature_id, str(endpoint.address), str(endpoint.address))
         ):
-            await self._delete_candidate(candidate)
-            removed += 1
+            # Only this exact session can retire its own advertisements.
+            # Different sessions may be live competing instances.
+            if candidate.advertisement.session_id == endpoint.session_id:
+                await self._delete_candidate(candidate)
+                removed += 1
         return removed
+
+    async def cleanup_restart(
+        self, restart: VerifiedRestart, endpoint: EndpointAddress
+    ) -> None:
+        """Remove only exact discovery identities from a verified exited process."""
+        await self.wait_current()
+        for candidate in self._view.candidates():
+            record = candidate.advertisement
+            if (
+                record.endpoint == endpoint
+                and record.advertiser == endpoint
+                and restart.contains(endpoint, record.session_id)
+            ):
+                await self._withdraw_advertisement_identity(
+                    feature_id=record.feature_id,
+                    advertisement_id=record.advertisement_id,
+                    endpoint=endpoint,
+                    session_id=record.session_id,
+                )
 
     async def _event_loop(self) -> None:
         await self._view.run()

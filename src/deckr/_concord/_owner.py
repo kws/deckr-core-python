@@ -16,6 +16,7 @@ from deckr._concord._models import (
 from deckr._concord._repository import ConcordRepository
 from deckr._concord._view import ConcordView
 from deckr.core.identity import ContractPointer, EndpointAddress, parse_endpoint_address
+from deckr.core.restart import VerifiedRestart
 
 _OWNER_RETRY_INITIAL_SECONDS = 0.1
 _OWNER_RETRY_MAX_SECONDS = 5.0
@@ -28,9 +29,16 @@ class ConcordOwnerBootstrap:
     owners must implement any exclusive admission or deliberate replacement.
     """
 
-    def __init__(self, store: ConcordRepository, view: ConcordView) -> None:
+    def __init__(
+        self,
+        store: ConcordRepository,
+        view: ConcordView,
+        *,
+        restart: VerifiedRestart | None = None,
+    ) -> None:
         self._store = store
         self._view = view
+        self._restart = restart
         self._locks: defaultdict[str, anyio.Lock] = defaultdict(anyio.Lock)
         self._active_lock = anyio.Lock()
         self._active: defaultdict[str, dict[ContractPointer, str]] = defaultdict(dict)
@@ -98,6 +106,8 @@ class ConcordOwnerBootstrap:
         endpoint: EndpointAddress,
         session_id: str,
     ) -> None:
+        if self._restart is not None and self._restart.contains(endpoint, session_id):
+            raise ValueError("a restarted endpoint must use a fresh session")
         await self._view.wait_current()
         snapshot = await self._view.snapshot(
             participant=endpoint,
@@ -112,7 +122,10 @@ class ConcordOwnerBootstrap:
             released = set(self._released[key])
         for state in snapshot.contracts:
             pointer = state.contract.pointer
-            if state.record.created_by != endpoint or pointer in current:
+            if pointer in current:
+                continue
+            owned = state.record.created_by == endpoint
+            if not owned and self._restart is None:
                 continue
             # No local session assertions: the other runtime may legitimately
             # hold a different session, including while the contract is pending.
@@ -122,6 +135,17 @@ class ConcordOwnerBootstrap:
                     ConcordUnavailableCode.STORE_UNAVAILABLE,
                     "Owner bootstrap exact state unavailable",
                 )
+            predecessor = validity.tokens.get(str(endpoint))
+            verified_restart = (
+                self._restart is not None
+                and predecessor is not None
+                and self._restart.contains(endpoint, predecessor.session_id)
+                and validity.status
+                in {
+                    ContractValidityStatus.VALID,
+                    ContractValidityStatus.NOT_YET_FULFILLED,
+                }
+            )
             proven_loss = validity.status in {
                 ContractValidityStatus.MISSING_TOKEN,
                 ContractValidityStatus.INVALID_TOKEN,
@@ -129,8 +153,30 @@ class ConcordOwnerBootstrap:
                 ContractValidityStatus.SESSION_MISMATCH,
                 ContractValidityStatus.TERMS_HASH_MISMATCH,
             }
-            if pointer in released or proven_loss:
+            departed_participation = (
+                self._restart is not None
+                and proven_loss
+                and validity.contract is not None
+                and endpoint in validity.contract.attached_participants
+                and self._restart.contains(
+                    endpoint, validity.contract.participant_sessions.get(key, "")
+                )
+            )
+            if (
+                verified_restart
+                or departed_participation
+                or (owned and (pointer in released or proven_loss))
+            ):
                 await self._cancel_until_resolved(pointer, endpoint)
+                confirmed = await self._store.validate_exact(state.contract)
+                if confirmed.status not in {
+                    ContractValidityStatus.CANCELLED,
+                    ContractValidityStatus.MISSING_CONTRACT,
+                }:
+                    raise ConcordUnavailable(
+                        ConcordUnavailableCode.STORE_UNAVAILABLE,
+                        "Restart cleanup is not confirmed",
+                    )
                 async with self._active_lock:
                     self._released[key].discard(pointer)
 

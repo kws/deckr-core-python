@@ -10,6 +10,7 @@ import anyio
 from deckr.components import resolve_component_host_plan, start_components
 from deckr.contracts.lanes import MessageContractRegistry
 from deckr.core.config import ConfigDocument, load_config_document
+from deckr.core.restart import restart_handoff_from_env
 from deckr.core.util.anyio import add_signal_handler
 from deckr.lanes import MessageBus
 from deckr.runtime import Deckr
@@ -48,6 +49,7 @@ async def run_configured_deckr(document: ConfigDocument) -> None:
             lane_contracts=plan.lane_contracts,
             lanes=plan.lane_names,
             message_bus=message_bus,
+            restart=restart_handoff_from_env(),
         ) as deckr,
         start_components(deckr, plan),
     ):

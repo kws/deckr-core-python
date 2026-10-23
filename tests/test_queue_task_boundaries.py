@@ -39,6 +39,13 @@ class _TemporaryBoundary:
 # Keeping exact semantic call sites here makes accidental replacement with an
 # unbounded registry or queue visible in the same audit as temporary debt.
 _PERMANENT_BOUNDED_BOUNDARIES: dict[_Boundary, int] = {
+    # At most 256 process-local endpoint sessions; removed on context exit.
+    (
+        Path("src/deckr/runtime.py"),
+        "Deckr.__init__",
+        "self._endpoint_sessions",
+        "task_or_reply_route_map",
+    ): 1,
     # Provider scopes are bounded by max_scopes/max_resources_per_scope; empty
     # scopes are removed and invalid contracts are reconciled from current state.
     (
