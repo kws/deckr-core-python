@@ -51,7 +51,9 @@ supervised-nats = [
     "nats-py>=2.14.0,<3.0.0",
 ]
 all = [
-    "deckr[cli,nats,supervised-nats]",
+    "click>=8.3.1,<9.0.0",
+    "deckr-nats-server-bin>=2.14.0,<2.15.0",
+    "nats-py>=2.14.0,<3.0.0",
 ]
 
 [project.urls]
