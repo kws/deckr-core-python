@@ -119,8 +119,10 @@ def test_run_document_uses_signal_handler_and_runner(
     assert "task_group" in captured
 
 
+@pytest.mark.parametrize("supervised", [False, True])
 def test_run_configured_deckr_uses_public_runtime_and_component_host(
     monkeypatch: pytest.MonkeyPatch,
+    supervised: bool,
 ) -> None:
     class Done(Exception):
         pass
@@ -136,11 +138,17 @@ def test_run_configured_deckr_uses_public_runtime_and_component_host(
     )()
 
     class FakeDeckr:
-        def __init__(self, *, lane_contracts, lanes, message_bus, restart):
+        def __init__(
+            self, *, lane_contracts, lanes, message_bus, restart, session_reporter
+        ):
             captured["lane_contracts"] = lane_contracts
             captured["lanes"] = lanes
             captured["message_bus"] = message_bus
             captured["restart"] = restart
+            captured["reporter"] = session_reporter
+
+        async def prepare_restart(self):
+            captured["cleaned"] = True
 
         async def __aenter__(self):
             captured["deckr_entered"] = True
@@ -151,6 +159,8 @@ def test_run_configured_deckr_uses_public_runtime_and_component_host(
 
     @asynccontextmanager
     async def fake_start_components(deckr, resolved_plan):
+        assert captured["cleaned"]
+        assert not supervised or captured["acknowledged"]
         captured["start_components_deckr"] = deckr
         captured["start_components_plan"] = resolved_plan
         yield object()
@@ -158,6 +168,16 @@ def test_run_configured_deckr_uses_public_runtime_and_component_host(
     async def fake_sleep_forever() -> None:
         raise Done()
 
+    class Channel:
+        async def register(self, session):
+            pass
+
+        async def cleaned(self, restart):
+            assert captured["cleaned"]
+            captured["acknowledged"] = True
+
+    channel = Channel() if supervised else None
+    monkeypatch.setattr("deckr.launcher.SupervisorChannel.from_env", lambda: channel)
     document = ConfigDocument(raw={"deckr": {}}, source_path=None, base_dir=Path.cwd())
     monkeypatch.setattr("deckr.launcher.resolve_component_host_plan", lambda doc: plan)
     monkeypatch.setattr("deckr.launcher.Deckr", FakeDeckr)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from types import TracebackType
 from typing import TYPE_CHECKING
@@ -56,8 +56,10 @@ class Deckr:
         lanes: Sequence[str] = (),
         message_bus: MessageBus | None = None,
         restart: VerifiedRestart | None = None,
+        session_reporter: Callable[[EndpointSession], Awaitable[None]] | None = None,
     ) -> None:
         self._restart = restart
+        self._session_reporter = session_reporter
         self._endpoint_sessions: dict[int, EndpointSession] = {}
         self._lane_contracts = self._build_lane_contracts(
             lane_contracts,
@@ -116,29 +118,53 @@ class Deckr:
         )
         self._endpoint_sessions[id(session)] = session
         try:
-            if self._restart is not None:
-                delay = 0.1
-                while True:
-                    try:
-                        with anyio.fail_after(5):
-                            await self.concord.bootstrap_owner(session)
-                            await self.beacon.cleanup_restart(
-                                self._restart, session.address
-                            )
-                        break
-                    except (
-                        TimeoutError,
-                        ConcordUnavailable,
-                        ConcordConflict,
-                        KvUnavailable,
-                        KvConflict,
-                    ):
-                        await anyio.sleep(delay)
-                        delay = min(delay * 2, 5)
+            await self._prepare_restart_endpoint(session)
+            if self._session_reporter is not None:
+                await self._session_reporter(session)
             yield session
         finally:
             self._endpoint_sessions.pop(id(session), None)
             await session.aclose()
+
+    async def prepare_restart(self) -> None:
+        """Confirm cleanup for all named predecessors, including removed endpoints.
+
+        Hosts call this before acknowledging the handoff or starting components.
+        No temporary session is exposed or granted authority by this cleanup.
+        """
+        if self._restart is None:
+            return
+        for address in sorted({row[0] for row in self._restart.participants}):
+            session = endpoint_session(
+                address=address,
+                session_id=None,
+                metadata=None,
+                message_bus=self._message_bus,
+            )
+            try:
+                await self._prepare_restart_endpoint(session)
+            finally:
+                await session.aclose()
+
+    async def _prepare_restart_endpoint(self, session: EndpointSession) -> None:
+        if self._restart is None:
+            return
+        delay = 0.1
+        while True:
+            try:
+                with anyio.fail_after(5):
+                    await self.concord.bootstrap_owner(session)
+                    await self.beacon.cleanup_restart(self._restart, session.address)
+                return
+            except (
+                TimeoutError,
+                ConcordUnavailable,
+                ConcordConflict,
+                KvUnavailable,
+                KvConflict,
+            ):
+                await anyio.sleep(delay)
+                delay = min(delay * 2, 5)
 
     @property
     def beacon(self) -> Beacon:

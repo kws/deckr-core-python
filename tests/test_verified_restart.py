@@ -232,3 +232,31 @@ def test_retained_exit_history_covers_both_predecessors_but_not_successor():
     proof = VerifiedRestart.from_handoff(value, instance_id="provider")
     assert proof.contains(PROVIDER, "dead") and proof.contains(PROVIDER, "older")
     assert not proof.contains(PROVIDER, "successor")
+
+
+@pytest.mark.asyncio
+async def test_prepare_restart_cleans_removed_endpoints_before_host_acknowledgement():
+    from types import SimpleNamespace
+
+    from deckr.contracts.lanes import DEFAULT_MESSAGE_CONTRACT_REGISTRY
+    from deckr.runtime import Deckr
+    from deckr.testing.runtime import mock_message_bus
+
+    proof = VerifiedRestart.from_handoff(handoff(), instance_id="provider")
+    async with Deckr(
+        message_bus=mock_message_bus(DEFAULT_MESSAGE_CONTRACT_REGISTRY), restart=proof
+    ) as runtime:
+        old, token = await contract(
+            SimpleNamespace(concord=runtime.concord), "removed", "dead"
+        )
+        live, _ = await contract(
+            SimpleNamespace(concord=runtime.concord), "live", "live"
+        )
+        with anyio.fail_after(2):
+            await runtime.prepare_restart()
+        assert (await runtime.concord.validate_exact(old)).status == "cancelled"
+        assert (await runtime.concord.validate_exact(live)).valid
+        assert runtime.endpoint_sessions == ()
+        # No replacement endpoint at PROVIDER was opened to trigger this cleanup.
+        assert token is not None
+        await runtime.prepare_restart()

@@ -296,6 +296,25 @@ sessions remain intact, and replacement endpoints always need fresh sessions.
 The supervisor retains unresolved predecessor entries across repeated crashes.
 Without confirmed exit evidence, normal token validity and contention apply.
 
+The launcher can also use `DECKR_SUPERVISOR_SOCKET`, an absolute Unix socket path
+owned by the trusted host. Both restart-handoff settings remain required. Before
+starting any components it calls `Deckr.prepare_restart()` to clean every endpoint
+in the handoff, including endpoints removed from the current configuration, then
+acknowledges that exact handoff. Each new endpoint is synchronously reported and
+must receive a durable acknowledgement before it is yielded for use. A missing
+supervisor or rejected report fails startup; it does not fall back to an
+unreported session. Embedded hosts can provide the same ordering with
+`Deckr(session_reporter=...)` and `prepare_restart()`.
+
+The workspace's Linux Docker supervisor authenticates reports with kernel peer
+credentials and the exact container start time. Its journal is outside the
+container, and its handoff directory is mounted read-only. It confirms Docker
+exit before issuing evidence and retains unresolved evidence through repeated
+crashes. Session reports and cleanup acknowledgements are local host operations;
+they do not grant Concord authority. `tests/test_supervision.py` and
+`tests/test_verified_restart.py` cover acknowledgement failure, readiness ordering,
+removed endpoints and cancellation before token expiry.
+
 ## Services and Action Runtime
 
 `Deckr.services(endpoint)` creates a `DeckrServices` context. Use `use_matching()`

@@ -19,6 +19,7 @@ from deckr.substrates.nats import (
     NatsSubstrate,
 )
 from deckr.substrates.supervised_nats import SupervisedNatsSubstrate
+from deckr.supervision import SupervisorChannel
 
 DocumentHook: TypeAlias = Callable[[ConfigDocument], None]
 DocumentLoader: TypeAlias = Callable[[Path | None], ConfigDocument]
@@ -44,16 +45,20 @@ _DEFAULT_CONFIG_DOCUMENT_TEXT = """# Deckr configuration document
 async def run_configured_deckr(document: ConfigDocument) -> None:
     plan = resolve_component_host_plan(document)
     message_bus = build_runtime_substrate(document, lane_contracts=plan.lane_contracts)
-    async with (
-        Deckr(
-            lane_contracts=plan.lane_contracts,
-            lanes=plan.lane_names,
-            message_bus=message_bus,
-            restart=restart_handoff_from_env(),
-        ) as deckr,
-        start_components(deckr, plan),
-    ):
-        await anyio.sleep_forever()
+    restart = restart_handoff_from_env()
+    supervisor = SupervisorChannel.from_env()
+    async with Deckr(
+        lane_contracts=plan.lane_contracts,
+        lanes=plan.lane_names,
+        message_bus=message_bus,
+        restart=restart,
+        session_reporter=supervisor.register if supervisor else None,
+    ) as deckr:
+        await deckr.prepare_restart()
+        if supervisor is not None:
+            await supervisor.cleaned(restart)
+        async with start_components(deckr, plan):
+            await anyio.sleep_forever()
 
 
 def build_runtime_substrate(
