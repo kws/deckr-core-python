@@ -860,7 +860,9 @@ async def test_beacon_lease_recreates_missing_advertisement_key() -> None:
 
 
 @pytest.mark.asyncio
-async def test_beacon_advertise_preserves_competing_session_without_exit_evidence() -> None:
+async def test_beacon_advertise_preserves_competing_session_without_exit_evidence() -> (
+    None
+):
     raw = MemoryJsonKvBucket(bucket="beacon", ttl_seconds=300)
 
     async with _running_beacon(raw) as beacon:
