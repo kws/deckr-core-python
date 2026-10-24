@@ -230,17 +230,16 @@ def check_action_runtime_semantics() -> int:
             valid = True
         equal(valid, case["semanticValid"], case["id"])
     from deckr.action_runtime import (
+        RenderCommand,
         RenderCommandContext,
         RenderRejection,
-        validate_render_command,
     )
 
     rendering = artifact("vectors/action-runtime-rendering.v1.json")
     for case in rendering["cases"]:
         code = None
         try:
-            validate_render_command(
-                DeckrMessage.from_wire(case["instance"]),
+            RenderCommand(DeckrMessage.from_wire(case["instance"])).validate(
                 RenderCommandContext.model_validate(case["context"]),
             )
         except RenderRejection as exc:

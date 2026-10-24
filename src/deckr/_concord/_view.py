@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -33,6 +34,7 @@ from deckr._concord._validation import (
 )
 from deckr.core.identity import ContractPointer, EndpointAddress
 from deckr.core.kv import (
+    KvEntry,
     KvMaterializedChange,
     KvMaterializedSnapshot,
     KvUnavailable,
@@ -47,6 +49,20 @@ class ConcordViewSnapshot:
     contracts: tuple[ConcordContractState, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class _ValidationSnapshot:
+    contract_key: str
+    contract_entry: KvEntry | None
+    token_entries: tuple[tuple[str, KvEntry | None], ...]
+    generations: tuple[int, int]
+    current: bool
+    validity: ContractValidity
+
+
+_VALIDATION_CACHE_CAPACITY = 128
+_NO_SESSION_ASSERTIONS = ConcordSessionAssertions()
+
+
 class ConcordView:
     """Indexed semantic projection over the contract and token KV sources."""
 
@@ -56,6 +72,9 @@ class ConcordView:
         token_source: ConcordMaterializedSourcePort,
     ) -> None:
         self._index = ConcordIndex()
+        self._validations: OrderedDict[
+            tuple[ContractHandle, ConcordSessionAssertions], _ValidationSnapshot
+        ] = OrderedDict()
         self.contract_source = contract_source
         self.token_source = token_source
         self._contract_observed_revision: dict[str, int] = {}
@@ -124,6 +143,7 @@ class ConcordView:
             cancel_scope.cancel()
             with anyio.move_on_after(5, shield=True):
                 await self._run_done.wait()
+        self._validations.clear()
         await self._broadcaster.aclose()
         await self._notify_contract_revisions()
         await self._notify_token_revisions()
@@ -343,26 +363,48 @@ class ConcordView:
         *,
         current_sessions: Mapping[str, str] | ConcordSessionAssertions | None = None,
     ) -> ContractValidity:
+        assertions = (
+            current_sessions
+            if isinstance(current_sessions, ConcordSessionAssertions)
+            else ConcordSessionAssertions.from_mapping(current_sessions)
+            if current_sessions is not None
+            else _NO_SESSION_ASSERTIONS
+        )
+        cache_key = (contract, assertions)
+        cached = self._validations.get(cache_key)
+        # Source health is checked on every read, even before the view's watch
+        # tasks run. Entry identity fences writes/deletes before index delivery;
+        # generation fences a recovered source that retained the same entries.
+        current = self.is_current()
+        generations = self.source_generations
+        if (
+            cached is not None
+            and cached.current == current
+            and cached.generations == generations
+            and self.contract_source.get_cached(cached.contract_key)
+            is cached.contract_entry
+            and all(
+                self.token_source.get_cached(key) is entry
+                for key, entry in cached.token_entries
+            )
+        ):
+            self._validations.move_to_end(cache_key)
+            return cached.validity
+
         pointer = contract.pointer
         key = concord_contract_key(
             contract_id=pointer.contract_id,
             generation=pointer.generation,
         )
-        observation = contract_observation_from_entry(
-            key,
-            self.contract_source.get_cached(key),
-        )
+        entry = self.contract_source.get_cached(key)
+        observation = contract_observation_from_entry(key, entry)
         participants = (
             observation.record.participants
             if observation.record is not None
             else contract.participants
         )
-        tokens = tuple(
-            token_observation_from_entry(
-                token_key,
-                participant,
-                self.token_source.get_cached(token_key),
-            )
+        token_entries = tuple(
+            (participant, token_key, self.token_source.get_cached(token_key))
             for participant in sorted(participants, key=str)
             for token_key in (
                 concord_participant_token_key(
@@ -372,7 +414,11 @@ class ConcordView:
                 ),
             )
         )
-        if not self.is_current():
+        tokens = tuple(
+            token_observation_from_entry(token_key, participant, token_entry)
+            for participant, token_key, token_entry in token_entries
+        )
+        if not current:
             observation = ContractObservation(
                 observation.key,
                 observation.revision,
@@ -380,17 +426,25 @@ class ConcordView:
                 record=observation.record,
                 diagnostic="Concord materialized contract or token source is stale",
             )
-        return evaluate_contract_validity(
+        validity = evaluate_contract_validity(
             expected_key=contract.key,
             expected_pointer=pointer,
             contract=observation,
             tokens=tokens,
-            session_assertions=(
-                current_sessions
-                if isinstance(current_sessions, ConcordSessionAssertions)
-                else ConcordSessionAssertions.from_mapping(current_sessions)
-            ),
+            session_assertions=assertions,
         )
+        self._validations[cache_key] = _ValidationSnapshot(
+            key,
+            entry,
+            tuple((key, entry) for _, key, entry in token_entries),
+            generations,
+            current,
+            validity,
+        )
+        self._validations.move_to_end(cache_key)
+        while len(self._validations) > _VALIDATION_CACHE_CAPACITY:
+            self._validations.popitem(last=False)
+        return validity
 
     def state_for(self, contract: ContractHandle) -> ConcordContractState | None:
         record = self._index.record(contract)

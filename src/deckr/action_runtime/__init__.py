@@ -43,10 +43,10 @@ from deckr.action_runtime.protocol import (
 )
 from deckr.action_runtime.rendering import (
     RenderBindingState as RenderBindingState,
+    RenderCommand as RenderCommand,
     RenderCommandContext as RenderCommandContext,
     RenderRejection as RenderRejection,
     render_match as render_match,
-    validate_render_command as validate_render_command,
     validate_rendering_support as validate_rendering_support,
 )
 from deckr.action_runtime.validation import (

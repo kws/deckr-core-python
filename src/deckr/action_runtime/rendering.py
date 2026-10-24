@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 from pydantic import Field
 
@@ -83,62 +84,74 @@ def validate_rendering_support(
         aliases[key] = shape
 
 
-def validate_render_command(
-    message: DeckrMessage, context: RenderCommandContext
-) -> tuple[RenderBindingState, RenderTargetSupport]:
-    """Validate current admission facts. Call again at final controller dispatch."""
-    validate_action_runtime_message(message)
-    body = action_runtime_body_from_service_message(
-        ServiceMessageBody.from_wire(message.body)
-    )
-    if not isinstance(body, BindingRenderBody):
-        raise ValueError("message is not binding_render")
-    if (
-        not context.local_authority
-        or message.contract != context.contract
-        or str(message.sender) != context.runtime_endpoint
-        or message.sender_session_id != context.runtime_session_id
-        or str(getattr(message.recipient, "endpoint", ""))
-        != context.controller_endpoint
-        or message.recipient_session_id != context.controller_session_id
-    ):
-        raise RenderRejection("unauthorized")
-    current = context.bindings.get(body.target.binding_id)
-    if (
-        current is None
-        or not current.active
-        or not context.hardware_authority
-        or current.binding.binding_id != body.target.binding_id
-        or current.binding.output_generation != body.target.generation
-        or current.contract != context.contract
-        or current.runtime_endpoint != context.runtime_endpoint
-        or current.runtime_session_id != context.runtime_session_id
-    ):
-        raise RenderRejection("target_not_current")
-    support = current.rendering
-    if support is None:
-        raise RenderRejection("unsupported_target")
-    validate_rendering_support(current.binding, support)
-    target = next(
-        (t for t in support.targets if t.requirement_name == body.requirement_name),
-        None,
-    )
-    if target is None:
-        raise RenderRejection("unsupported_target")
-    if context.message_bytes > target.limits.max_message_bytes:
-        raise RenderRejection("limit_exceeded")
-    if body.content is not None:
-        content = body.content
-        selected = next((f for f in target.formats if f.id == content.format), None)
-        if selected is None:
-            raise RenderRejection("unsupported_format")
-        if content.format == RENDER_IMAGE_FORMAT:
-            if (
-                selected.options is None
-                or content.data["encoding"] not in selected.options["encodings"]
-            ):
+@dataclass(frozen=True, slots=True, init=False)
+class RenderCommand:
+    """Validated immutable content; current authority is never retained here."""
+
+    message: DeckrMessage
+    body: BindingRenderBody
+
+    def __init__(self, message: DeckrMessage):
+        validate_action_runtime_message(message)
+        body = action_runtime_body_from_service_message(
+            ServiceMessageBody.from_wire(message.body)
+        )
+        if not isinstance(body, BindingRenderBody):
+            raise ValueError("message is not binding_render")
+        object.__setattr__(self, "message", message)
+        object.__setattr__(self, "body", body)
+
+    def validate(
+        self, context: RenderCommandContext
+    ) -> tuple[RenderBindingState, RenderTargetSupport]:
+        """Check fresh admission facts at admission and every hardware handoff."""
+        message, body = self.message, self.body
+        if (
+            not context.local_authority
+            or message.contract != context.contract
+            or str(message.sender) != context.runtime_endpoint
+            or message.sender_session_id != context.runtime_session_id
+            or str(getattr(message.recipient, "endpoint", ""))
+            != context.controller_endpoint
+            or message.recipient_session_id != context.controller_session_id
+        ):
+            raise RenderRejection("unauthorized")
+        current = context.bindings.get(body.target.binding_id)
+        if (
+            current is None
+            or not current.active
+            or not context.hardware_authority
+            or current.binding.binding_id != body.target.binding_id
+            or current.binding.output_generation != body.target.generation
+            or current.contract != context.contract
+            or current.runtime_endpoint != context.runtime_endpoint
+            or current.runtime_session_id != context.runtime_session_id
+        ):
+            raise RenderRejection("target_not_current")
+        support = current.rendering
+        if support is None:
+            raise RenderRejection("unsupported_target")
+        validate_rendering_support(current.binding, support)
+        target = next(
+            (t for t in support.targets if t.requirement_name == body.requirement_name),
+            None,
+        )
+        if target is None:
+            raise RenderRejection("unsupported_target")
+        if context.message_bytes > target.limits.max_message_bytes:
+            raise RenderRejection("limit_exceeded")
+        if body.content is not None:
+            content = body.content
+            selected = next((f for f in target.formats if f.id == content.format), None)
+            if selected is None:
                 raise RenderRejection("unsupported_format")
-        elif content.format == RENDER_TEXT_FORMAT:
-            if len(content.data["text"]) > target.limits.max_text_code_points:
-                raise RenderRejection("limit_exceeded")
-    return current, target
+            if content.format == RENDER_IMAGE_FORMAT:
+                if (
+                    selected.options is None
+                    or content.data["encoding"] not in selected.options["encodings"]
+                ):
+                    raise RenderRejection("unsupported_format")
+            elif content.format == RENDER_TEXT_FORMAT:
+                if len(content.data["text"]) > target.limits.max_text_code_points:
+                    raise RenderRejection("limit_exceeded")
+        return current, target

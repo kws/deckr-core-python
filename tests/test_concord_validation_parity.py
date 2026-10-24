@@ -569,3 +569,111 @@ class _PausingExactGetBucket(MemoryJsonKvBucket):
             self.read_started.set()
             await self.resume_read.wait()
         return await super().get(key)
+
+
+@pytest.mark.asyncio
+async def test_hot_authority_reads_do_not_reparse_unchanged_records(monkeypatch):
+    from unittest.mock import Mock
+
+    import deckr._concord._view as module
+
+    case = await _build_case("valid_contract")
+    view = case.harness.concord._view
+    parse = Mock(wraps=module.contract_observation_from_entry)
+    tokens = Mock(wraps=module.token_observation_from_entry)
+    monkeypatch.setattr(module, "contract_observation_from_entry", parse)
+    monkeypatch.setattr(module, "token_observation_from_entry", tokens)
+    first = view.validate(case.handle)
+    for _ in range(1000):
+        assert view.validate(case.handle) is first
+    assert first.valid
+    assert parse.call_count == 1
+    assert tokens.call_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mutation", ["delete", "replace", "malformed", "cancel"])
+async def test_cached_validity_observes_raw_changes_before_index_delivery(mutation):
+    case = await _build_case("valid_contract")
+    view = case.harness.concord._view
+    assert view.validate(case.handle).valid
+    # Deliberately leave the semantic index untouched: local authority must
+    # follow the raw materialized entry even before its watch task gets a turn.
+    entries = case.harness._token_view._entries
+    key = _token_key(_CONTROLLER)
+    old = entries[key]
+    if mutation == "delete":
+        del entries[key]
+        expected = ContractValidityStatus.MISSING_TOKEN
+    elif mutation == "cancel":
+        records = case.harness._contract_view._entries
+        old = records[case.handle.key]
+        records[case.handle.key] = replace(
+            old,
+            value=_contract_record(
+                state=ContractState.CANCELLED, attached=_PARTICIPANTS
+            ).to_dict(),
+            revision=old.revision + 1,
+        )
+        expected = ContractValidityStatus.CANCELLED
+    else:
+        # Also fence a different entry with the same revision, as can occur
+        # after a replacement source or a malformed test/imported record.
+        value = (
+            {"invalid": True}
+            if mutation == "malformed"
+            else _token_record(_CONTROLLER, terms_hash="sha256:replacement").to_dict()
+        )
+        entries[key] = replace(old, value=value)
+        expected = (
+            ContractValidityStatus.INVALID_TOKEN
+            if mutation == "malformed"
+            else ContractValidityStatus.TERMS_HASH_MISMATCH
+        )
+    assert view.validate(case.handle).status == expected
+
+
+@pytest.mark.asyncio
+async def test_cached_validity_fences_health_generation_and_session_assertions():
+    case = await _build_case("valid_contract")
+    view = case.harness.concord._view
+    first = view.validate(case.handle)
+    assert first.valid
+    source = case.harness._token_view
+    await source._set_status(KvViewStatus.STALE)
+    assert view.validate(case.handle).status == ContractValidityStatus.UNAVAILABLE
+    await source._set_status(KvViewStatus.READY)
+    recovered = view.validate(case.handle)
+    assert recovered.valid
+    assert recovered is not first
+    # Recovery can coalesce without a reader ever observing stale.
+    await source._set_status(KvViewStatus.STALE)
+    await source._set_status(KvViewStatus.READY)
+    assert view.validate(case.handle) is not recovered
+    assert (
+        view.validate(
+            case.handle, current_sessions={_CONTROLLER_KEY: "successor-session"}
+        ).status
+        == ContractValidityStatus.SESSION_MISMATCH
+    )
+    assert view.validate(case.handle).valid
+    assert view.validate(replace(case.handle, key="non-canonical")).status == (
+        ContractValidityStatus.INVALID_CONTRACT
+    )
+
+
+@pytest.mark.asyncio
+async def test_validation_cache_is_bounded_and_released_on_close(monkeypatch):
+    import deckr._concord._view as module
+
+    monkeypatch.setattr(module, "_VALIDATION_CACHE_CAPACITY", 2)
+    case = await _build_case("valid_contract")
+    view = case.harness.concord._view
+    original = view.validate(case.handle)
+    view.validate(case.handle, current_sessions={_CONTROLLER_KEY: "other-1"})
+    view.validate(case.handle, current_sessions={_CONTROLLER_KEY: "other-2"})
+    assert len(view._validations) == 2
+    assert view.validate(case.handle) is not original
+    assert len(view._validations) == 2
+    await view.aclose()
+    assert not view._validations

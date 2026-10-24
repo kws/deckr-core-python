@@ -158,6 +158,21 @@ uv run python scripts/report_lifecycle_branch_coverage.py coverage.json
 uv run python scripts/check_spec_conformance.py
 ```
 
+`RenderCommand(message)` validates immutable rendering content once. Its
+`validate(context)` method checks fresh authority, endpoint sessions, binding,
+output generation, target support and limits at admission and final dispatch.
+Controllers must supply current context at every handoff; the parsed command
+does not retain permission to send output.
+
+Concord local authority reads reuse up to 128 validated snapshots per view.
+Every read still checks both source health and continuity generations and the
+identity of the current contract and participant-token entries. A write, delete,
+malformed replacement, stale source, or changed session assertion invalidates
+the snapshot immediately, before semantic-watch delivery. This avoids repeatedly
+parsing unchanged wire records during rendering without extending token lifetime
+or restoring lost authority. See `tests/test_concord_validation_parity.py` and
+`tests/test_concord_lifecycle_guards.py` for invalidation and recovery coverage.
+
 Focused protocol tests can use `MemoryJsonKvBucket`, `ConcordRuntimeHarness`,
 and `ConcordMaintenanceHarness` from `deckr.testing`. Use the runtime harness
 for ordinary Concord tests and the maintenance harness for maintenance coverage.
