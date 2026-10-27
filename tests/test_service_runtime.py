@@ -61,16 +61,16 @@ from deckr.testing import MemoryJsonKvBucket
 
 
 def _protocol(
-    service_id: str = "openhab-home",
+    service_id: str = "home",
     *,
-    operations: tuple[str, ...] = ("setItemScope", "sendCommand"),
+    operations: tuple[str, ...] = ("setResourceScope", "writeProperty"),
 ) -> ServiceProtocol:
     del service_id
     return ServiceProtocol(
-        namespace="dev.deckr.openhab.service",
-        feature_id="dev.deckr.openhab.feature",
-        advertisement_profile="dev.deckr.openhab.service.advertisement.v1",
-        use_profile="dev.deckr.openhab.service_use.v1",
+        namespace="dev.deckr.home_automation.service",
+        feature_id="dev.deckr.home_automation.feature",
+        advertisement_profile="dev.deckr.home_automation.service.advertisement.v1",
+        use_profile="dev.deckr.home_automation.service_use.v1",
         operations={name: ServiceOperationDefinition() for name in operations},
         messages={
             name: ServiceMessageDefinition(
@@ -82,8 +82,8 @@ def _protocol(
             for name in operations
         },
         view_families={
-            "items": ServiceViewFamilyDefinition(
-                storeName="deckr_openhab_service_view_v1",
+            "resources": ServiceViewFamilyDefinition(
+                storeName="deckr_home_automation_service_view_v1",
                 writer=ServiceViewWriter.SERVICE,
             )
         },
@@ -98,7 +98,7 @@ async def _publish_service_advertisement(
     beacon: Beacon,
     protocol: ServiceProtocol,
     *,
-    service_id: str = "openhab-home",
+    service_id: str = "home",
     session_id: str = "service-session",
     payload: Mapping[str, Any] | None = None,
     feature_id: str | None = None,
@@ -154,8 +154,8 @@ async def _service_view_context(*, contract_id: str = "service-contract-1"):
         contract=_contract_handle(contract_id=contract_id),
     )
     view_ref = ServiceViewRef(
-        "deckr_openhab_service_view_v1",
-        service_view_key("openhab-home", "items", "Kitchen Light"),
+        "deckr_home_automation_service_view_v1",
+        service_view_key("home", "resources", "Kitchen Light"),
     )
     return protocol, lease, view_ref
 
@@ -173,7 +173,7 @@ def _contract_handle(
             sorted(
                 (
                     action_provider_address("provider-main"),
-                    service_address("openhab-home"),
+                    service_address("home"),
                 ),
                 key=str,
             )
@@ -182,7 +182,7 @@ def _contract_handle(
             sorted(
                 (
                     action_provider_address("provider-main"),
-                    service_address("openhab-home"),
+                    service_address("home"),
                 ),
                 key=str,
             )
@@ -292,7 +292,7 @@ def _managed_contract(
         key=f"{contract.contract_id}:{contract.generation}:service",
         contract_id=contract.contract_id,
         generation=contract.generation,
-        participant=service_address("openhab-home"),
+        participant=service_address("home"),
         session_id="service-session",
         token_id="service-token",
         revision=1,
@@ -328,19 +328,19 @@ def _managed_contract(
 def _service_message(
     contract: ContractHandle,
     *,
-    name: str = "setItemScope",
-    namespace: str = "dev.deckr.openhab.service",
+    name: str = "setResourceScope",
+    namespace: str = "dev.deckr.home_automation.service",
     sender=None,
 ) -> Any:
     sender = sender or action_provider_address("provider-main")
     return service_message(
         sender=sender,
         sender_session_id="provider-session",
-        recipient=service_address("openhab-home"),
+        recipient=service_address("home"),
         recipient_session_id="service-session",
         subject=entity_subject(
             "service",
-            serviceId="openhab-home",
+            serviceId="home",
             namespace=namespace,
             name=name,
         ),
@@ -356,7 +356,7 @@ def _service_message(
 
 
 class _FakeServiceParticipant:
-    participant = service_address("openhab-home")
+    participant = service_address("home")
     session_id = "service-session"
 
     def __init__(self, managed: tuple[ConcordManagedContract, ...]) -> None:
@@ -444,14 +444,14 @@ async def test_parse_service_descriptor_validates_profile_identity() -> None:
         descriptor = parse_service_descriptor(candidate, protocol)
         assert descriptor is not None
         assert descriptor.namespace == protocol.namespace
-        assert descriptor.endpoint == service_address("openhab-home")
+        assert descriptor.endpoint == service_address("home")
 
         wrong_feature_protocol = _protocol()
         object.__setattr__(wrong_feature_protocol, "feature_id", protocol.namespace)
         assert parse_service_descriptor(candidate, wrong_feature_protocol) is None
 
         payload = protocol.advertisement_payload(
-            service_id="openhab-home",
+            service_id="home",
             session_id="service-session",
             backend_status=ServiceBackendStatus.AVAILABLE,
         ).to_dict()
@@ -465,7 +465,7 @@ async def test_parse_service_descriptor_validates_profile_identity() -> None:
         assert parse_service_descriptor(wrong_profile, protocol) is None
 
         payload = protocol.advertisement_payload(
-            service_id="openhab-home",
+            service_id="home",
             session_id="service-session",
             backend_status=ServiceBackendStatus.AVAILABLE,
         ).to_dict()
@@ -505,27 +505,29 @@ async def test_service_descriptors_resolve_from_beacon_directory() -> None:
         await _publish_service_advertisement(
             beacon,
             protocol,
-            service_id="openhab-backup",
+            service_id="home-backup",
             session_id="backup-session",
         )
         await _eventually_descriptor_count(directory, 2)
 
         descriptor = directory.resolve(
             lambda item: (
-                item.service_id == "openhab-backup"
+                item.service_id == "home-backup"
                 and item.namespace == protocol.namespace
                 and item.use_profile == protocol.use_profile
-                and "sendCommand" in item.supported_operations
-                and "items" in item.views
-                and item.endpoint == service_address("openhab-backup")
+                and "writeProperty" in item.supported_operations
+                and "resources" in item.views
+                and item.endpoint == service_address("home-backup")
                 and item.session_id == "backup-session"
             ),
             select=newest_service_descriptor,
         )
 
         assert descriptor is not None
-        assert descriptor.service_id == "openhab-backup"
-        assert descriptor.views["items"].key_prefix == "views.openhab-backup.items."
+        assert descriptor.service_id == "home-backup"
+        assert (
+            descriptor.views["resources"].key_prefix == "views.home-backup.resources."
+        )
         assert (
             directory.resolve(lambda item: "missing" in item.supported_operations)
             is None
@@ -566,7 +568,7 @@ async def test_service_directory_tracks_beacon_events_without_stale_descriptors(
 
         await advertisement.update(
             payload=protocol.advertisement_payload(
-                service_id="openhab-home",
+                service_id="home",
                 session_id="service-session",
                 backend_status=ServiceBackendStatus.DEGRADED,
             ).to_dict()
@@ -589,7 +591,7 @@ def test_service_protocol_allows_operation_only_declarations() -> None:
         operations={"doThing": ServiceOperationDefinition()},
         messages={},
         view_families={
-            "items": ServiceViewFamilyDefinition(
+            "resources": ServiceViewFamilyDefinition(
                 storeName="deckr_test_view_v1",
                 writer=ServiceViewWriter.SERVICE,
             )
@@ -617,7 +619,7 @@ def test_service_protocol_validates_message_operation_references() -> None:
                 )
             },
             view_families={
-                "items": ServiceViewFamilyDefinition(
+                "resources": ServiceViewFamilyDefinition(
                     storeName="deckr_test_view_v1",
                     writer=ServiceViewWriter.SERVICE,
                 )
@@ -730,7 +732,7 @@ async def test_authorize_service_message_matches_exact_contract_pointer() -> Non
     participant = _FakeServiceParticipant((managed,))
     request = _service_message(
         lease.contract,
-        name="setItemScope",
+        name="setResourceScope",
         namespace=protocol.namespace,
     )
     request = request.model_copy(
@@ -744,15 +746,15 @@ async def test_authorize_service_message_matches_exact_contract_pointer() -> Non
     result = await authorize_service_message(
         participant,
         request,
-        service_id="openhab-home",
+        service_id="home",
         protocol=protocol,
-        name="setItemScope",
+        name="setResourceScope",
     )
 
     assert isinstance(result, AuthorizedServiceMessage)
     assert result.contract == lease.contract
     assert result.record == managed.record
-    assert result.body.name == "setItemScope"
+    assert result.body.name == "setResourceScope"
     assert result.view_write_context.writer == ServiceViewWriter.SERVICE
     assert result.view_write_context.consumer_session_id == "provider-session"
     assert participant.reconcile_calls == 0
@@ -766,7 +768,7 @@ async def test_authorize_service_message_rejects_lost_local_authority() -> None:
     participant = _FakeServiceParticipant((managed,))
     request = _service_message(
         lease.contract,
-        name="setItemScope",
+        name="setResourceScope",
         namespace=protocol.namespace,
     )
 
@@ -774,9 +776,9 @@ async def test_authorize_service_message_rejects_lost_local_authority() -> None:
         await authorize_service_message(
             participant,
             request,
-            service_id="openhab-home",
+            service_id="home",
             protocol=protocol,
-            name="setItemScope",
+            name="setResourceScope",
         )
 
     assert exc_info.value.code == "contract_local_authority_lost"
@@ -790,7 +792,7 @@ async def test_authorize_service_message_rejects_unmanaged_contract_pointer() ->
     other_contract = _contract_handle(contract_id="service-contract-2")
     request = _service_message(
         other_contract,
-        name="setItemScope",
+        name="setResourceScope",
         namespace=protocol.namespace,
     )
 
@@ -798,9 +800,9 @@ async def test_authorize_service_message_rejects_unmanaged_contract_pointer() ->
         await authorize_service_message(
             participant,
             request,
-            service_id="openhab-home",
+            service_id="home",
             protocol=protocol,
-            name="setItemScope",
+            name="setResourceScope",
         )
 
     assert exc_info.value.code == "contract_not_managed"
@@ -823,9 +825,9 @@ async def test_authorize_service_message_rejects_sender_not_named_by_contract() 
         await authorize_service_message(
             participant,
             request,
-            service_id="openhab-home",
+            service_id="home",
             protocol=protocol,
-            name="setItemScope",
+            name="setResourceScope",
         )
 
     assert exc_info.value.code == "scope_mismatch"
@@ -843,7 +845,7 @@ async def test_authorize_service_message_rejects_subject_scope_mismatch(
     participant = _FakeServiceParticipant((managed,))
     request = _service_message(
         lease.contract,
-        name="setItemScope",
+        name="setResourceScope",
         namespace=protocol.namespace,
     )
     identifiers = dict(request.subject.identifiers)
@@ -859,9 +861,9 @@ async def test_authorize_service_message_rejects_subject_scope_mismatch(
         await authorize_service_message(
             participant,
             request,
-            service_id="openhab-home",
+            service_id="home",
             protocol=protocol,
-            name="setItemScope",
+            name="setResourceScope",
         )
 
     assert exc_info.value.code == "scope_mismatch"
@@ -871,12 +873,12 @@ async def test_authorize_service_message_rejects_subject_scope_mismatch(
 @pytest.mark.asyncio
 async def test_authorize_service_message_rejects_name_outside_protocol() -> None:
     protocol, lease, _view_ref = await _service_view_context()
-    protocol = _protocol(operations=("setItemScope",))
+    protocol = _protocol(operations=("setResourceScope",))
     managed = _managed_contract(lease.contract)
     participant = _FakeServiceParticipant((managed,))
     request = _service_message(
         lease.contract,
-        name="sendCommand",
+        name="writeProperty",
         namespace=protocol.namespace,
     )
 
@@ -884,9 +886,9 @@ async def test_authorize_service_message_rejects_name_outside_protocol() -> None
         await authorize_service_message(
             participant,
             request,
-            service_id="openhab-home",
+            service_id="home",
             protocol=protocol,
-            name="sendCommand",
+            name="writeProperty",
         )
 
     assert exc_info.value.code == "scope_mismatch"
@@ -932,8 +934,8 @@ async def test_service_view_store_uses_explicit_lease_scope() -> None:
             )
 
         unauthorized = ServiceViewRef(
-            "deckr_openhab_service_view_v1",
-            "views.openhab-home.items-unrelated.Kitchen",
+            "deckr_home_automation_service_view_v1",
+            "views.home.resources-unrelated.Kitchen",
         )
         with pytest.raises(UnsupportedServiceScope):
             await view_store.get(_view_read_context(lease), unauthorized)
@@ -954,9 +956,9 @@ async def test_service_view_store_enforces_declared_writer() -> None:
         supported_operations=lease.descriptor.supported_operations,
         supported_messages=lease.descriptor.supported_messages,
         views={
-            "items": ServiceViewFamily(
+            "resources": ServiceViewFamily(
                 storeName=view_ref.store_name,
-                keyPrefix=service_view_key("openhab-home", "items") + ".",
+                keyPrefix=service_view_key("home", "resources") + ".",
                 writer=ServiceViewWriter.CONSUMER,
             )
         },

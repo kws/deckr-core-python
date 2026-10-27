@@ -103,6 +103,12 @@ _APPROVED_MANAGED_CANCEL_CALLS: Counter[_CallSite] = Counter(
 _APPROVED_NON_PROTOCOL_CALLS: Counter[_CallSite] = Counter(
     {
         (
+            Path("src/deckr/services/resources.py"),
+            "ValueSchema.validate_value",
+            "local_validator",
+            "validate",
+        ): 1,
+        (
             Path("src/deckr/hardware/validation.py"),
             "validate_payload",
             "local_validator",

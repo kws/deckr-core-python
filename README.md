@@ -47,6 +47,17 @@ The former `deckr.contracts.artifacts` module and its exports from
 from the reference repository at the revision recorded in
 [.deckr-spec-revision](.deckr-spec-revision).
 
+## Typed resource views
+
+`deckr.services.resources` provides `ResourceDescriptor`, `ResourceSnapshot`,
+property/action descriptors and the bounded `ValueSchema` subset. Values stay
+JSON-typed; unknown, unavailable and invalid observations carry no usable value.
+`ResourceSnapshot.from_view` reads a payload after managed service delivery and
+removes the core's authority fence fields before validating domain data. These
+models do not acquire authority or replace managed service subscriptions.
+Home automation profiles, backend mappings and action rendering belong to the
+[shared domain package](https://github.com/kws/deckr-plugin-home-automation).
+
 ## Specification dependency
 
 The core targets the alpha Action Runtime contract at the Git revision in
